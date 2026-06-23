@@ -74,14 +74,6 @@ function mk20_get_buddyboss_field( $user_id, $field_name, $fallback = '' ) {
 }
 
 /**
- * Obtiene los metadatos de un curso de LearnDash.
- *
- * @param int    $course_id ID del curso.
- * @param string $meta_key  Clave del meta.
- * @param string $fallback  Valor de respaldo.
- * @return string Valor del meta o el fallback.
- */
-/**
  * Limpia el título del curso eliminando el prefijo antes de "|".
  * Ej: "2026-06 | Píldora 5" → "Píldora 5"
  */
@@ -180,3 +172,188 @@ function mk20_get_default_settings() {
     ];
 }
 
+/**
+ * Importa un certificado PDF desde una fuente externa y lo registra
+ * con el mismo formato que los certificados nativos del plugin.
+ *
+ * @param string $pdf_content  Contenido binario del PDF.
+ * @param int    $user_id      ID del usuario en WordPress.
+ * @param string $external_id  Identificador único del certificado en el sistema externo.
+ * @param string $course_title Título del curso presencial.
+ * @param string $issue_date   Fecha de emisión (formato MySQL o d/m/Y).
+ * @return string|false Ruta absoluta del PDF guardado, o false si falla.
+ */
+function mk20_import_external_certificate( $pdf_content, $user_id, $external_id, $course_title, $issue_date = '' ) {
+    if ( empty( $pdf_content ) || empty( $user_id ) || empty( $external_id ) ) {
+        return false;
+    }
+
+    $hash = md5( $external_id );
+
+    $existing_path = get_user_meta( $user_id, '_mk20_ext_cert_path_' . $hash, true );
+    if ( $existing_path && file_exists( $existing_path ) ) {
+        return $existing_path;
+    }
+
+    $upload_dir = wp_upload_dir();
+    $cert_dir   = $upload_dir['basedir'] . '/mk20-certificates';
+    if ( ! file_exists( $cert_dir ) ) {
+        wp_mkdir_p( $cert_dir );
+    }
+
+    $student_name = mk20_get_student_name( $user_id );
+    $slug_name    = mb_substr( sanitize_title( $student_name ), 0, 30 );
+    $slug_course  = mb_substr( sanitize_title( $course_title ), 0, 40 );
+    $slug_date    = sanitize_title( date_i18n( 'd-m-Y' ) );
+    $filename     = sprintf( 'certificado_%s_%s_%s.pdf', $slug_course, $slug_name, $slug_date );
+    $filepath     = $cert_dir . '/' . $filename;
+
+    $bytes = file_put_contents( $filepath, $pdf_content );
+    if ( false === $bytes ) {
+        return false;
+    }
+
+    if ( empty( $issue_date ) ) {
+        $issue_date = current_time( 'mysql' );
+    }
+
+    update_user_meta( $user_id, '_mk20_ext_cert_path_' . $hash, $filepath );
+    update_user_meta( $user_id, '_mk20_ext_cert_date_' . $hash, $issue_date );
+    update_user_meta( $user_id, '_mk20_ext_cert_url_' . $hash, $upload_dir['baseurl'] . '/mk20-certificates/' . $filename );
+    update_user_meta( $user_id, '_mk20_ext_course_title_' . $hash, $course_title );
+
+    $attach_id = mk20_register_external_certificate_attachment( $filepath, $user_id, $hash, $course_title, $student_name );
+    if ( $attach_id ) {
+        update_user_meta( $user_id, '_mk20_ext_cert_attachment_id_' . $hash, $attach_id );
+    }
+
+    return $filepath;
+}
+
+/**
+ * Registra un certificado externo como attachment en la librería multimedia.
+ */
+function mk20_register_external_certificate_attachment( $pdf_path, $user_id, $hash, $course_title, $student_name ) {
+    if ( ! function_exists( 'wp_generate_attachment_metadata' ) ) {
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+    }
+    if ( ! function_exists( 'wp_read_video_metadata' ) ) {
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+    }
+
+    $existing_attachment_id = get_user_meta( $user_id, '_mk20_ext_cert_attachment_id_' . $hash, true );
+    if ( $existing_attachment_id && get_post( $existing_attachment_id ) ) {
+        return $existing_attachment_id;
+    }
+
+    $filetype = wp_check_filetype( basename( $pdf_path ), null );
+
+    $attachment = array(
+        'guid'           => $pdf_path,
+        'post_mime_type' => $filetype['type'] ?: 'application/pdf',
+        'post_title'     => sprintf( 'Certificado externo: %s — %s', $student_name, $course_title ),
+        'post_content'   => '',
+        'post_status'    => 'inherit',
+        'post_author'    => $user_id,
+    );
+
+    $attach_id = wp_insert_attachment( $attachment, $pdf_path );
+    if ( is_wp_error( $attach_id ) ) {
+        return false;
+    }
+
+    wp_generate_attachment_metadata( $attach_id, $pdf_path );
+    update_post_meta( $attach_id, '_mk20_ext_cert_hash', $hash );
+    update_post_meta( $attach_id, '_mk20_cert_user_id', $user_id );
+
+    return $attach_id;
+}
+
+/**
+ * Sincroniza los certificados externos del usuario consultando la API externa.
+ * Usa el DNI/NIE del perfil de BuddyBoss como identificador.
+ * Almacena un transient de 6 horas para no repetir la consulta en cada carga.
+ *
+ * @param int $user_id ID del usuario en WordPress.
+ */
+function mk20_sync_external_certificates( $user_id ) {
+    if ( empty( MK20_EXT_API_URL ) ) {
+        return;
+    }
+
+    $transient_key = 'mk20_ext_sync_' . $user_id;
+    if ( get_transient( $transient_key ) ) {
+        return;
+    }
+
+    $options = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
+    $dni     = mk20_get_buddyboss_field( $user_id, $options['bb_field_dni'], '' );
+
+    if ( empty( $dni ) ) {
+        return;
+    }
+
+    $api_url = add_query_arg( 'dni', urlencode( $dni ), MK20_EXT_API_URL );
+
+    $headers = array(
+        'Accept' => 'application/json',
+    );
+    if ( ! empty( MK20_EXT_API_TOKEN ) ) {
+        $headers['Authorization'] = 'Bearer ' . MK20_EXT_API_TOKEN;
+    }
+
+    $response = wp_remote_get( $api_url, array(
+        'timeout' => 30,
+        'headers' => $headers,
+    ) );
+
+    if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) {
+        set_transient( $transient_key, 'error', HOUR_IN_SECONDS );
+        return;
+    }
+
+    $body = wp_remote_retrieve_body( $response );
+    $data = json_decode( $body, true );
+
+    if ( ! is_array( $data ) || empty( $data['certificates'] ) ) {
+        set_transient( $transient_key, 'empty', 6 * HOUR_IN_SECONDS );
+        return;
+    }
+
+    $imported = 0;
+    foreach ( $data['certificates'] as $cert ) {
+        $external_id  = isset( $cert['id'] ) ? sanitize_text_field( $cert['id'] ) : '';
+        $course_title = isset( $cert['title'] ) ? sanitize_text_field( $cert['title'] ) : '';
+        $issue_date   = isset( $cert['date'] ) ? sanitize_text_field( $cert['date'] ) : '';
+        $pdf_url      = isset( $cert['pdf_url'] ) ? esc_url_raw( $cert['pdf_url'] ) : '';
+
+        if ( empty( $external_id ) || empty( $pdf_url ) ) {
+            continue;
+        }
+
+        $hash = md5( $external_id );
+        if ( get_user_meta( $user_id, '_mk20_ext_cert_path_' . $hash, true ) ) {
+            continue;
+        }
+
+        $pdf_response = wp_remote_get( $pdf_url, array(
+            'timeout' => 30,
+        ) );
+
+        if ( is_wp_error( $pdf_response ) || wp_remote_retrieve_response_code( $pdf_response ) !== 200 ) {
+            continue;
+        }
+
+        $pdf_content = wp_remote_retrieve_body( $pdf_response );
+        if ( empty( $pdf_content ) ) {
+            continue;
+        }
+
+        $result = mk20_import_external_certificate( $pdf_content, $user_id, $external_id, $course_title, $issue_date );
+        if ( $result ) {
+            $imported++;
+        }
+    }
+
+    set_transient( $transient_key, 'done_' . $imported, 6 * HOUR_IN_SECONDS );
+}
