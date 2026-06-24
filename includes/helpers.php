@@ -185,6 +185,13 @@ function mk20_get_default_settings() {
  */
 function mk20_import_external_certificate( $pdf_content, $user_id, $external_id, $course_title, $issue_date = '' ) {
     if ( empty( $pdf_content ) || empty( $user_id ) || empty( $external_id ) ) {
+        mk20_api_audit_log( "IMPORT_ERROR user_id={$user_id} external_id={$external_id} motivo=parametros_vacios" );
+        return false;
+    }
+
+    if ( substr( $pdf_content, 0, 4 ) !== '%PDF' ) {
+        mk20_api_audit_log( "IMPORT_ERROR user_id={$user_id} external_id={$external_id} motivo=no_es_pdf" );
+        mk20_store_rejected_pdf( $user_id, $external_id, $course_title, 'no_es_pdf', '' );
         return false;
     }
 
@@ -210,6 +217,7 @@ function mk20_import_external_certificate( $pdf_content, $user_id, $external_id,
 
     $bytes = file_put_contents( $filepath, $pdf_content );
     if ( false === $bytes ) {
+        mk20_api_audit_log( "IMPORT_ERROR user_id={$user_id} external_id={$external_id} motivo=error_escritura" );
         return false;
     }
 
@@ -276,6 +284,26 @@ function mk20_register_external_certificate_attachment( $pdf_path, $user_id, $ha
  *
  * @param int $user_id ID del usuario en WordPress.
  */
+function mk20_store_rejected_pdf( $user_id, $external_id, $course_title, $reason, $extra = '' ) {
+    $rejected = get_option( 'mk20_rejected_certificates', array() );
+    $hash     = md5( $external_id );
+
+    if ( isset( $rejected[ $hash ] ) ) {
+        return;
+    }
+
+    $rejected[ $hash ] = array(
+        'user_id'      => $user_id,
+        'external_id'  => $external_id,
+        'course_title' => $course_title,
+        'reason'       => $reason,
+        'extra'        => $extra,
+        'date'         => current_time( 'mysql' ),
+    );
+
+    update_option( 'mk20_rejected_certificates', $rejected, false );
+}
+
 function mk20_sync_external_certificates( $user_id ) {
     if ( empty( MK20_EXT_API_URL ) ) {
         return;
@@ -286,10 +314,13 @@ function mk20_sync_external_certificates( $user_id ) {
         return;
     }
 
+    mk20_api_audit_log( "INICIO user_id={$user_id}" );
+
     $options = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
     $dni     = mk20_get_buddyboss_field( $user_id, $options['bb_field_dni'], '' );
 
     if ( empty( $dni ) ) {
+        mk20_api_audit_log( "SALT user_id={$user_id} motivo=sin_dni" );
         return;
     }
 
@@ -308,7 +339,9 @@ function mk20_sync_external_certificates( $user_id ) {
     ) );
 
     if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) {
+        $error_msg = is_wp_error( $response ) ? $response->get_error_message() : 'HTTP ' . wp_remote_retrieve_response_code( $response );
         set_transient( $transient_key, 'error', HOUR_IN_SECONDS );
+        mk20_api_audit_log( "ERROR user_id={$user_id} dni={$dni} motivo={$error_msg}" );
         return;
     }
 
@@ -317,6 +350,7 @@ function mk20_sync_external_certificates( $user_id ) {
 
     if ( ! is_array( $data ) || empty( $data['certificates'] ) ) {
         set_transient( $transient_key, 'empty', 6 * HOUR_IN_SECONDS );
+        mk20_api_audit_log( "VACIO user_id={$user_id} dni={$dni}" );
         return;
     }
 
@@ -341,11 +375,28 @@ function mk20_sync_external_certificates( $user_id ) {
         ) );
 
         if ( is_wp_error( $pdf_response ) || wp_remote_retrieve_response_code( $pdf_response ) !== 200 ) {
+            mk20_api_audit_log( "DOWNLOAD_ERROR user_id={$user_id} external_id={$external_id} motivo=error_http" );
+            continue;
+        }
+
+        $content_type = wp_remote_retrieve_header( $pdf_response, 'content-type' );
+        if ( strpos( $content_type, 'application/pdf' ) === false ) {
+            mk20_api_audit_log( "DOWNLOAD_ERROR user_id={$user_id} external_id={$external_id} motivo=content_type_invalido valor={$content_type}" );
+            mk20_store_rejected_pdf( $user_id, $external_id, $course_title, 'content_type_invalido', $content_type );
+            continue;
+        }
+
+        $content_length = wp_remote_retrieve_header( $pdf_response, 'content-length' );
+        if ( ! empty( $content_length ) && intval( $content_length ) > 10 * MB_IN_BYTES ) {
+            mk20_api_audit_log( "DOWNLOAD_ERROR user_id={$user_id} external_id={$external_id} motivo=pdf_demasiado_grande bytes={$content_length}" );
+            mk20_store_rejected_pdf( $user_id, $external_id, $course_title, 'pdf_demasiado_grande', $content_length . ' bytes' );
             continue;
         }
 
         $pdf_content = wp_remote_retrieve_body( $pdf_response );
         if ( empty( $pdf_content ) ) {
+            mk20_api_audit_log( "DOWNLOAD_ERROR user_id={$user_id} external_id={$external_id} motivo=cuerpo_vacio" );
+            mk20_store_rejected_pdf( $user_id, $external_id, $course_title, 'cuerpo_vacio', '' );
             continue;
         }
 
@@ -356,4 +407,5 @@ function mk20_sync_external_certificates( $user_id ) {
     }
 
     set_transient( $transient_key, 'done_' . $imported, 6 * HOUR_IN_SECONDS );
+    mk20_api_audit_log( "OK user_id={$user_id} dni={$dni} importados={$imported}" );
 }

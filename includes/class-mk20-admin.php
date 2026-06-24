@@ -17,6 +17,7 @@ class MK20_Admin {
         add_action( 'admin_menu', [ $this, 'add_settings_page' ] );
         add_action( 'admin_init', [ $this, 'register_settings' ] );
         add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_media_uploader' ] );
+        add_action( 'admin_notices', [ $this, 'show_rejected_notice' ] );
 
         // Procesar acción de generación de PDF de prueba
         add_action( 'admin_post_mk20_preview_cert', [ $this, 'generate_preview_pdf' ] );
@@ -47,6 +48,24 @@ class MK20_Admin {
             return;
         }
         wp_enqueue_media();
+    }
+
+    public function show_rejected_notice() {
+        $rejected = get_option( 'mk20_rejected_certificates', array() );
+        if ( empty( $rejected ) ) {
+            return;
+        }
+
+        $settings_url = admin_url( 'options-general.php?page=mk20-certificates' );
+        ?>
+        <div class="notice notice-warning is-dismissible">
+            <p>
+                <strong><?php esc_html_e( 'MK20 Certificados:', 'mk20-custom-certificates' ); ?></strong>
+                <?php echo esc_html( sprintf( _n( 'Hay %d certificado externo rechazado por seguridad.', 'Hay %d certificados externos rechazados por seguridad.', count( $rejected ), 'mk20-custom-certificates' ), count( $rejected ) ) ); ?>
+                <a href="<?php echo esc_url( $settings_url ); ?>"><?php esc_html_e( 'Ver detalles', 'mk20-custom-certificates' ); ?></a>
+            </p>
+        </div>
+        <?php
     }
 
     /**
@@ -631,6 +650,34 @@ class MK20_Admin {
                             <p><strong><?php esc_html_e( 'Soporte de Caracteres:', 'mk20-custom-certificates' ); ?></strong></p>
                             <p><?php esc_html_e( 'El plugin cuenta con traducción automática de caracteres UTF-8 (tildes, eñes) para evitar errores de renderizado de texto en FPDF.', 'mk20-custom-certificates' ); ?></p>
                         </div>
+
+                        <?php
+                        $rejected = get_option( 'mk20_rejected_certificates', array() );
+                        if ( ! empty( $rejected ) ) :
+                            $dismiss_url = admin_url( 'admin-post.php?action=mk20_dismiss_rejected' );
+                            ?>
+                            <div class="mk20-card" style="border-left: 4px solid #f59e0b;">
+                                <h3 style="color: #d97706;"><?php esc_html_e( 'Certificados Rechazados', 'mk20-custom-certificates' ); ?></h3>
+                                <table style="width:100%; font-size:13px; border-collapse:collapse;">
+                                    <tr style="border-bottom:1px solid #e2e8f0;">
+                                        <th style="text-align:left; padding:4px;"><?php esc_html_e( 'Usuario', 'mk20-custom-certificates' ); ?></th>
+                                        <th style="text-align:left; padding:4px;"><?php esc_html_e( 'Curso', 'mk20-custom-certificates' ); ?></th>
+                                        <th style="text-align:left; padding:4px;"><?php esc_html_e( 'Motivo', 'mk20-custom-certificates' ); ?></th>
+                                    </tr>
+                                    <?php foreach ( $rejected as $item ) : ?>
+                                        <tr style="border-bottom:1px solid #f1f5f9;">
+                                            <td style="padding:4px;"><?php echo esc_html( '#' . $item['user_id'] ); ?></td>
+                                            <td style="padding:4px;"><?php echo esc_html( mb_substr( $item['course_title'], 0, 25 ) . ( mb_strlen( $item['course_title'] ) > 25 ? '...' : '' ) ); ?></td>
+                                            <td style="padding:4px;"><?php echo esc_html( $item['reason'] . ( ! empty( $item['extra'] ) ? ' (' . $item['extra'] . ')' : '' ) ); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </table>
+                                <p style="margin:8px 0 0; font-size:12px; color:#64748b;">
+                                    <?php esc_html_e( 'Estos certificados no se mostraron a los alumnos.', 'mk20-custom-certificates' ); ?>
+                                    <a href="<?php echo esc_url( wp_nonce_url( $dismiss_url, 'mk20_dismiss_rejected' ) ); ?>" style="color:#ef4444;"><?php esc_html_e( 'Descartar', 'mk20-custom-certificates' ); ?></a>
+                                </p>
+                            </div>
+                        <?php endif; ?>
 
                         <div class="mk20-card" style="text-align: center;">
                             <h3><?php esc_html_e( 'Vista Previa del Certificado', 'mk20-custom-certificates' ); ?></h3>

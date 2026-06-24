@@ -23,6 +23,9 @@ if ( ! defined( 'MK20_EXT_API_URL' ) ) {
 if ( ! defined( 'MK20_EXT_API_TOKEN' ) ) {
     define( 'MK20_EXT_API_TOKEN', '' );
 }
+if ( ! defined( 'MK20_EXT_API_LOG' ) ) {
+    define( 'MK20_EXT_API_LOG', '' );
+}
 
 require_once MK20_CERT_PATH . 'includes/helpers.php';
 require_once MK20_CERT_PATH . 'includes/class-mk20-admin.php';
@@ -30,7 +33,28 @@ require_once MK20_CERT_PATH . 'includes/class-mk20-pdf-engine.php';
 
 add_action( 'plugins_loaded', 'mk20_custom_certificates_init' );
 
+function mk20_protect_cert_directory() {
+    $upload_dir = wp_upload_dir();
+    $cert_dir   = $upload_dir['basedir'] . '/mk20-certificates';
+    $htaccess   = $cert_dir . '/.htaccess';
+
+    if ( file_exists( $htaccess ) ) {
+        return;
+    }
+
+    if ( ! file_exists( $cert_dir ) ) {
+        wp_mkdir_p( $cert_dir );
+    }
+
+    if ( file_exists( $cert_dir ) && is_writable( $cert_dir ) ) {
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_file_put_contents
+        file_put_contents( $htaccess, "Deny from all\n" );
+    }
+}
+
 function mk20_custom_certificates_init() {
+    mk20_protect_cert_directory();
+
     if ( is_admin() ) {
         new MK20_Admin();
     }
@@ -44,6 +68,7 @@ function mk20_custom_certificates_init() {
     add_action( 'admin_post_mk20_download_ext_cert', 'mk20_download_external_certificate' );
     add_action( 'admin_post_nopriv_mk20_download_ext_cert', 'mk20_download_external_certificate' );
     add_action( 'admin_post_mk20_reset_settings', 'mk20_reset_to_defaults' );
+    add_action( 'admin_post_mk20_dismiss_rejected', 'mk20_dismiss_rejected_certificates' );
 
     add_action( 'bp_setup_nav', 'mk20_certificates_profile_tab', 100 );
 }
@@ -65,6 +90,28 @@ function mk20_debug_log( $message ) {
         // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
         error_log( $message );
     }
+}
+
+function mk20_api_audit_log( $message ) {
+    if ( empty( MK20_EXT_API_LOG ) ) {
+        return;
+    }
+    $timestamp = current_time( 'mysql' );
+    $line      = "[{$timestamp}] {$message}" . PHP_EOL;
+    // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_file_put_contents
+    file_put_contents( MK20_EXT_API_LOG, $line, FILE_APPEND | LOCK_EX );
+}
+
+function mk20_dismiss_rejected_certificates() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( 'No tienes permiso para realizar esta accion.' );
+    }
+    if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( $_GET['_wpnonce'] ), 'mk20_dismiss_rejected' ) ) {
+        wp_die( 'Enlace invalido o expirado.' );
+    }
+    delete_option( 'mk20_rejected_certificates' );
+    wp_safe_redirect( admin_url( 'options-general.php?page=mk20-certificates' ) );
+    exit;
 }
 
 function mk20_handle_course_completion( $data ) {
