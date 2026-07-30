@@ -169,6 +169,9 @@ function mk20_get_default_settings() {
         'contents_size'   => 13,
         'contents_color'  => '#383838',
         'contents_center' => 0,
+
+        // 8. Conservación de datos al desinstalar
+        'keep_data_on_uninstall' => 1,
     ];
 }
 
@@ -225,10 +228,17 @@ function mk20_import_external_certificate( $pdf_content, $user_id, $external_id,
         $issue_date = current_time( 'mysql' );
     }
 
+    $integrity_hash = hash_file( 'sha256', $filepath );
+    if ( ! $integrity_hash ) {
+        $integrity_hash = '';
+    }
+
     update_user_meta( $user_id, '_mk20_ext_cert_path_' . $hash, $filepath );
     update_user_meta( $user_id, '_mk20_ext_cert_date_' . $hash, $issue_date );
     update_user_meta( $user_id, '_mk20_ext_cert_url_' . $hash, $upload_dir['baseurl'] . '/mk20-certificates/' . $filename );
     update_user_meta( $user_id, '_mk20_ext_course_title_' . $hash, $course_title );
+    update_user_meta( $user_id, '_mk20_ext_cert_hash_' . $hash, $integrity_hash );
+    update_user_meta( $user_id, '_mk20_ext_cert_ts_' . $hash, current_time( 'mysql' ) );
 
     $attach_id = mk20_register_external_certificate_attachment( $filepath, $user_id, $hash, $course_title, $student_name );
     if ( $attach_id ) {

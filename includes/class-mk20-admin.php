@@ -28,14 +28,34 @@ class MK20_Admin {
     }
 
     /**
-     * Añade la página de opciones en Ajustes -> MK20 Certificates
+     * Añade el menú principal y subpáginas
      */
     public function add_settings_page() {
-        add_options_page(
-            __( 'Ajustes de Certificados MK20', 'mk20-custom-certificates' ),
-            __( 'Certificados MK20', 'mk20-custom-certificates' ),
+        add_menu_page(
+            __( 'Certificados cursos', 'mk20-custom-certificates' ),
+            __( 'Certificados cursos', 'mk20-custom-certificates' ),
             'manage_options',
             'mk20-certificates',
+            [ $this, 'render_all_certificates_page' ],
+            'dashicons-awards',
+            80
+        );
+
+        add_submenu_page(
+            'mk20-certificates',
+            __( 'Todos los Certificados', 'mk20-custom-certificates' ),
+            __( 'Todos los Certificados', 'mk20-custom-certificates' ),
+            'manage_options',
+            'mk20-certificates',
+            [ $this, 'render_all_certificates_page' ]
+        );
+
+        add_submenu_page(
+            'mk20-certificates',
+            __( 'Ajustes', 'mk20-custom-certificates' ),
+            __( 'Ajustes', 'mk20-custom-certificates' ),
+            'manage_options',
+            'mk20-certificates-settings',
             [ $this, 'render_settings_page' ]
         );
     }
@@ -44,7 +64,7 @@ class MK20_Admin {
      * Encola el framework multimedia de WordPress para la subida de imágenes
      */
     public function enqueue_media_uploader( $hook ) {
-        if ( 'settings_page_mk20-certificates' !== $hook ) {
+        if ( 'certificates_page_mk20-certificates-settings' !== $hook && 'toplevel_page_mk20-certificates' !== $hook ) {
             return;
         }
         wp_enqueue_media();
@@ -131,7 +151,7 @@ class MK20_Admin {
         }
 
         // Checkboxes (centrar) — 1 si está marcado, 0 si no
-        $cb_fields = [ 'name_center', 'company_line_center', 'front_course_center', 'date_center', 'contents_center' ];
+        $cb_fields = [ 'name_center', 'company_line_center', 'front_course_center', 'date_center', 'contents_center', 'keep_data_on_uninstall' ];
         foreach ( $cb_fields as $f ) {
             $output[ $f ] = isset( $input[ $f ] ) ? 1 : 0;
         }
@@ -689,6 +709,17 @@ class MK20_Admin {
                             </div>
                         </div>
 
+                        <div class="mk20-card">
+                            <h3><?php esc_html_e( 'Protección de Datos', 'mk20-custom-certificates' ); ?></h3>
+                            <label class="align-checkbox-label">
+                                <input type="checkbox" name="mk20_cert_settings[keep_data_on_uninstall]" value="1" <?php checked( ! empty( $settings['keep_data_on_uninstall'] ) ); ?>>
+                                <?php esc_html_e( 'Conservar datos al desinstalar', 'mk20-custom-certificates' ); ?>
+                            </label>
+                            <p class="description" style="margin-top:10px;">
+                                <?php esc_html_e( 'Si está marcado, los certificados generados y sus metadatos se conservarán aunque desactives y elimines el plugin.', 'mk20-custom-certificates' ); ?>
+                            </p>
+                        </div>
+
                         <div class="mk20-card" style="text-align: center;">
                             <h3 style="color: #ef4444;"><?php esc_html_e( 'Restaurar Valores', 'mk20-custom-certificates' ); ?></h3>
                             <p class="description"><?php esc_html_e( 'Vuelve a los valores de posición, tamaño y color que trae el plugin por defecto.', 'mk20-custom-certificates' ); ?></p>
@@ -733,6 +764,178 @@ class MK20_Admin {
                 });
             });
         </script>
+        <?php
+    }
+
+    /**
+     * Renderiza la página de administración con todos los certificados del sistema.
+     */
+    public function render_all_certificates_page() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'No tienes permisos suficientes.', 'mk20-custom-certificates' ) );
+        }
+
+        global $wpdb;
+        $current_page = isset( $_GET['paged'] ) ? max( 1, absint( $_GET['paged'] ) ) : 1;
+        $per_page     = 20;
+        $offset       = ( $current_page - 1 ) * $per_page;
+
+        $total = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->usermeta} WHERE meta_key LIKE %s OR meta_key LIKE %s",
+                $wpdb->esc_like( '_mk20_cert_path_' ) . '%',
+                $wpdb->esc_like( '_mk20_ext_cert_path_' ) . '%'
+            )
+        );
+
+        $results = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT user_id, meta_key, meta_value FROM {$wpdb->usermeta}
+                 WHERE meta_key LIKE %s OR meta_key LIKE %s
+                 ORDER BY user_id ASC, meta_key ASC
+                 LIMIT %d OFFSET %d",
+                $wpdb->esc_like( '_mk20_cert_path_' ) . '%',
+                $wpdb->esc_like( '_mk20_ext_cert_path_' ) . '%',
+                $per_page,
+                $offset
+            )
+        );
+
+        $deleted_notice = get_transient( 'mk20_cert_deleted_notice' );
+        if ( $deleted_notice ) {
+            delete_transient( 'mk20_cert_deleted_notice' );
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $deleted_notice ) . '</p></div>';
+        }
+
+        $total_pages = ceil( $total / $per_page );
+        $page_links  = paginate_links( [
+            'base'      => add_query_arg( 'paged', '%#%' ),
+            'format'    => '',
+            'prev_text' => '&laquo;',
+            'next_text' => '&raquo;',
+            'total'     => $total_pages,
+            'current'   => $current_page,
+        ] );
+
+        ?>
+        <div class="wrap">
+            <h1 class="wp-heading-inline"><?php esc_html_e( 'Todos los Certificados', 'mk20-custom-certificates' ); ?></h1>
+            <p class="description"><?php esc_html_e( 'Listado completo de certificados generados por el plugin en todos los usuarios.', 'mk20-custom-certificates' ); ?></p>
+
+            <?php if ( empty( $results ) ) : ?>
+                <div class="notice notice-info"><p><?php esc_html_e( 'No hay certificados generados aún.', 'mk20-custom-certificates' ); ?></p></div>
+                <?php return; ?>
+            <?php endif; ?>
+
+            <?php if ( $page_links ) : ?>
+                <div class="tablenav top" style="margin: 12px 0;">
+                    <div class="tablenav-pages"><?php echo wp_kses_post( $page_links ); ?></div>
+                </div>
+            <?php endif; ?>
+
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th style="width:40px;"><?php esc_html_e( 'ID', 'mk20-custom-certificates' ); ?></th>
+                        <th><?php esc_html_e( 'Usuario', 'mk20-custom-certificates' ); ?></th>
+                        <th><?php esc_html_e( 'Curso', 'mk20-custom-certificates' ); ?></th>
+                        <th style="width:90px;"><?php esc_html_e( 'Tipo', 'mk20-custom-certificates' ); ?></th>
+                        <th style="width:100px;"><?php esc_html_e( 'Fecha', 'mk20-custom-certificates' ); ?></th>
+                        <th style="width:100px;"><?php esc_html_e( 'Descargar', 'mk20-custom-certificates' ); ?></th>
+                        <th style="width:80px;"><?php esc_html_e( 'Eliminar', 'mk20-custom-certificates' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ( $results as $row ) :
+                    $is_external = strpos( $row->meta_key, '_mk20_ext_cert_path_' ) === 0;
+                    $user_info   = get_userdata( $row->user_id );
+
+                    if ( ! $user_info ) {
+                        continue;
+                    }
+
+                    if ( $is_external ) {
+                        $hash         = str_replace( '_mk20_ext_cert_path_', '', $row->meta_key );
+                        $course_title = get_user_meta( $row->user_id, '_mk20_ext_course_title_' . $hash, true );
+                        $cert_date    = get_user_meta( $row->user_id, '_mk20_ext_cert_date_' . $hash, true );
+                        $cert_fmt     = $cert_date ? date_i18n( 'd/m/Y', strtotime( $cert_date ) ) : '—';
+                        $download_url = wp_nonce_url( add_query_arg( [ 'ext_cert' => $hash, 'user_id' => $row->user_id ], admin_url( 'admin-post.php?action=mk20_download_ext_cert' ) ), 'mk20_download_ext_cert_' . $hash );
+                    } else {
+                        $course_id    = intval( str_replace( '_mk20_cert_path_', '', $row->meta_key ) );
+                        if ( ! $course_id ) {
+                            continue;
+                        }
+                        $course_title = mk20_clean_course_title( get_the_title( $course_id ) );
+                        $cert_date    = get_user_meta( $row->user_id, '_mk20_cert_date_' . $course_id, true );
+                        $cert_fmt     = $cert_date ? date_i18n( 'd/m/Y', strtotime( $cert_date ) ) : '—';
+                        $download_url = wp_nonce_url( add_query_arg( [ 'course_id' => $course_id, 'user_id' => $row->user_id ], admin_url( 'admin-post.php?action=mk20_download_cert' ) ), 'mk20_download_cert_' . $course_id );
+                    }
+
+                    $user_name   = $user_info->display_name;
+                    $user_url    = admin_url( 'user-edit.php?user_id=' . $row->user_id );
+                    $profile_url = bp_core_get_userlink( $row->user_id, false, true );
+                    ?>
+                    <tr>
+                        <td><?php echo absint( $row->user_id ); ?></td>
+                        <td>
+                            <a href="<?php echo esc_url( $profile_url ? $profile_url : $user_url ); ?>" target="_blank">
+                                <?php echo get_avatar( $row->user_id, 24 ); ?>
+                                <?php echo esc_html( $user_name ); ?>
+                            </a>
+                        </td>
+                        <td><?php echo esc_html( $course_title ?: '—' ); ?></td>
+                        <td><span class="mk20-badge <?php echo $is_external ? 'mk20-badge-ext' : 'mk20-badge-native'; ?>"><?php echo $is_external ? esc_html__( 'Externo', 'mk20-custom-certificates' ) : esc_html__( 'Online', 'mk20-custom-certificates' ); ?></span></td>
+                        <td><?php echo esc_html( $cert_fmt ); ?></td>
+                        <td>
+                            <a href="<?php echo esc_url( $download_url ); ?>" class="button button-small" style="background:#10b981;color:#fff;border:none;text-decoration:none;">
+                                <?php esc_html_e( 'PDF', 'mk20-custom-certificates' ); ?>
+                            </a>
+                        </td>
+                        <td>
+                            <?php if ( ! $is_external ) :
+                                $delete_url = wp_nonce_url( add_query_arg( [ 'course_id' => $course_id, 'user_id' => $row->user_id ], admin_url( 'admin-post.php?action=mk20_delete_cert' ) ), 'mk20_delete_cert_' . $course_id );
+                                ?>
+                                <a href="<?php echo esc_url( $delete_url ); ?>"
+                                   class="button button-small"
+                                   style="background:#ef4444;color:#fff;border:none;text-decoration:none;"
+                                   onclick="return confirm('<?php echo esc_js( __( '¿Eliminar este certificado permanentemente?', 'mk20-custom-certificates' ) ); ?>');">
+                                    <?php esc_html_e( 'Eliminar', 'mk20-custom-certificates' ); ?>
+                                </a>
+                            <?php else : ?>
+                                <span style="color:#94a3b8;">—</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <?php if ( $page_links ) : ?>
+                <div class="tablenav bottom" style="margin:12px 0;">
+                    <div class="tablenav-pages"><?php echo wp_kses_post( $page_links ); ?></div>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <style>
+            .mk20-badge {
+                display: inline-block;
+                padding: 3px 8px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+            }
+            .mk20-badge-native {
+                background: #dbeafe;
+                color: #1e40af;
+            }
+            .mk20-badge-ext {
+                background: #fef3c7;
+                color: #92400e;
+            }
+            .mk20-certificates-table td { vertical-align: middle; }
+        </style>
         <?php
     }
 

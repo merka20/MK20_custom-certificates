@@ -9,17 +9,29 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class MK20_PDF_Engine {
 
-    /**
-     * Constructor del motor.
-     */
+    private $last_integrity_hash = '';
+    private $last_timestamp = '';
+    private $last_verify_hash = '';
+
     public function __construct() {
-        // Cargar FPDF si no se ha cargado previamente
         if ( ! class_exists( 'FPDF' ) ) {
             $fpdf_path = MK20_CERT_PATH . 'lib/fpdf/fpdf.php';
             if ( file_exists( $fpdf_path ) ) {
                 require_once $fpdf_path;
             }
         }
+    }
+
+    public function get_last_integrity_hash() {
+        return $this->last_integrity_hash;
+    }
+
+    public function get_last_timestamp() {
+        return $this->last_timestamp;
+    }
+
+    public function get_last_verify_hash() {
+        return $this->last_verify_hash;
     }
 
     /**
@@ -239,6 +251,24 @@ class MK20_PDF_Engine {
             // Contenidos del Curso en el Reverso (lista numerada, alineada a la izquierda)
             $this->write_numbered_list( $pdf, $course_contents, $contents_x, $contents_y, 'Arial', $contents_size, $contents_color, false, 297, 7 );
 
+            // Pie de integridad: hash completo + timestamp + URL + QR
+            $this->last_verify_hash = hash( 'sha256', $user_id . '|' . $course_id . '|' . $student_name . '|' . $course_title . '|' . $date );
+            $footer_hash   = 'HASH: ' . $this->last_verify_hash;
+            $footer_ts     = 'TS: ' . gmdate( 'Y-m-d H:i:s \U\T\C' );
+            $verify_page   = home_url( '/verificar/' );
+
+            $this->write_text( $pdf, $footer_hash, 10, 197, 'Arial', '', 6, '#666666', false );
+            $this->write_text( $pdf, $footer_ts, 10, 201, 'Arial', '', 6, '#666666', false );
+            $short_code  = substr( $this->last_verify_hash, 0, 12 );
+            $this->write_text( $pdf, $verify_page . $short_code, 10, 205, 'Arial', '', 6, '#666666', false );
+            $qr_data    = home_url( '/verificar/' . $short_code );
+            $qr_url  = 'https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=' . urlencode( $qr_data );
+            $qr_temp = download_url( $qr_url, 5 );
+            if ( ! is_wp_error( $qr_temp ) ) {
+                $pdf->Image( $qr_temp, 257, 188, 20, 20 );
+                unlink( $qr_temp );
+            }
+
             // Crear el directorio en WordPress si no existe
             $upload_dir = wp_upload_dir();
             $cert_dir   = $upload_dir['basedir'] . '/mk20-certificates';
@@ -254,8 +284,20 @@ class MK20_PDF_Engine {
             $filename    = sprintf( 'certificado_%s_%s_%s.pdf', $slug_course, $slug_name, $slug_date );
             $filepath  = $cert_dir . '/' . $filename;
 
-            // Guardar en disco
+            $pdf->SetTitle( sprintf( 'Certificado: %s', $course_title ) );
+            $pdf->SetSubject( 'Certificado de formacion' );
+            $pdf->SetAuthor( $student_name );
+            $pdf->SetCreator( 'MK20 Custom Certificates' );
+            $pdf->SetKeywords( sprintf(
+                'certificado,%s,%s,sha256',
+                sanitize_title( $course_title ),
+                sanitize_title( $student_name )
+            ) );
+
             $pdf->Output( 'F', $filepath );
+
+            $this->last_integrity_hash = hash_file( 'sha256', $filepath );
+            $this->last_timestamp      = gmdate( 'Y-m-d\TH:i:s\Z' );
 
             return $filepath;
 
@@ -274,15 +316,10 @@ class MK20_PDF_Engine {
     private function write_text( $pdf, $text, $x, $y, $font, $style, $size, $hex_color, $center = false, $page_width = 297 ) {
         $pdf->SetFont( $font, $style, $size );
 
-        // Convertir hexadecimal a RGB
         list( $r, $g, $b ) = $this->hex_to_rgb( $hex_color );
         $pdf->SetTextColor( $r, $g, $b );
 
-        // Resolver codificación de caracteres acentuados para fuentes predeterminadas de FPDF (ISO-8859-1 / windows-1252)
-        $encoded_text = iconv( 'UTF-8', 'windows-1252//TRANSLIT', $text );
-        if ( ! $encoded_text ) {
-            $encoded_text = mb_convert_encoding( $text, 'Windows-1252', 'UTF-8' );
-        }
+        $encoded_text = $this->encode_text( $text );
 
         if ( $center ) {
             $text_width = $pdf->GetStringWidth( $encoded_text );
@@ -296,6 +333,9 @@ class MK20_PDF_Engine {
      * Convierte color HEX (#FFFFFF o FFFFFF) a un array RGB [R, G, B]
      */
     private function hex_to_rgb( $hex ) {
+        if ( empty( $hex ) || ! is_string( $hex ) ) {
+            return [ 0, 0, 0 ];
+        }
         $hex = str_replace( '#', '', $hex );
         if ( strlen( $hex ) === 3 ) {
             $r = hexdec( substr( $hex, 0, 1 ) . substr( $hex, 0, 1 ) );
@@ -343,7 +383,6 @@ class MK20_PDF_Engine {
      * Escribe una línea de texto con estilos y colores mixtos en FPDF
      */
     private function write_mixed_line( $pdf, $x, $y, $font, $size, $center, $page_width, $segments ) {
-        // 1. Calcular el ancho total de la línea
         $total_width = 0;
         $encoded_segments = [];
         
@@ -351,11 +390,7 @@ class MK20_PDF_Engine {
             $style = ! empty( $seg['bold'] ) ? 'B' : '';
             $pdf->SetFont( $font, $style, $size );
             
-            $text = $seg['text'];
-            $encoded_text = iconv( 'UTF-8', 'windows-1252//TRANSLIT', $text );
-            if ( ! $encoded_text ) {
-                $encoded_text = mb_convert_encoding( $text, 'Windows-1252', 'UTF-8' );
-            }
+            $encoded_text = $this->encode_text( $seg['text'] );
             
             $w = $pdf->GetStringWidth( $encoded_text );
             $total_width += $w;
@@ -368,14 +403,12 @@ class MK20_PDF_Engine {
             ];
         }
         
-        // 2. Determinar la coordenada X de inicio según el centrado
         if ( $center ) {
             $current_x = ( $page_width - $total_width ) / 2;
         } else {
             $current_x = $x;
         }
         
-        // 3. Dibujar cada segmento de forma secuencial
         foreach ( $encoded_segments as $eseg ) {
             $style = $eseg['bold'] ? 'B' : '';
             $pdf->SetFont( $font, $style, $size );
@@ -392,6 +425,10 @@ class MK20_PDF_Engine {
      * Escribe una lista numerada a partir de un texto multilínea
      */
     private function write_numbered_list( $pdf, $text, $x, $y, $font, $size, $hex_color, $center, $page_width, $line_spacing ) {
+        if ( empty( $text ) || ! is_string( $text ) ) {
+            return;
+        }
+
         list( $r, $g, $b ) = $this->hex_to_rgb( $hex_color );
         $pdf->SetTextColor( $r, $g, $b );
 
@@ -406,5 +443,23 @@ class MK20_PDF_Engine {
             $this->write_text( $pdf, $label, $x, $current_y, $font, '', $size, $hex_color, $center, $page_width );
             $current_y += $size * 0.4;
         }
+    }
+
+    private function encode_text( $text ) {
+        if ( ! is_string( $text ) || $text === '' ) {
+            return '';
+        }
+
+        $encoded = iconv( 'UTF-8', 'windows-1252//TRANSLIT', $text );
+        if ( $encoded !== false ) {
+            return $encoded;
+        }
+
+        $encoded = mb_convert_encoding( $text, 'Windows-1252', 'UTF-8' );
+        if ( $encoded !== false ) {
+            return $encoded;
+        }
+
+        return $text;
     }
 }

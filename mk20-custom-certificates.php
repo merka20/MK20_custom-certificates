@@ -3,7 +3,7 @@
  * Plugin Name: MK20 Custom Certificates
  * Plugin URI:  https://github.com/google-deepmind
  * Description: Genera certificados PDF de dos caras (anverso y reverso) personalizados mediante FPDF al completar cursos de LearnDash.
- * Version:     1.1.0
+ * Version:     1.2.0
  * Author:      Merka2.0
  * Author URI:  https://merka20.com
  * License:     GPL2+
@@ -27,11 +27,114 @@ if ( ! defined( 'MK20_EXT_API_LOG' ) ) {
     define( 'MK20_EXT_API_LOG', '' );
 }
 
+/**
+ * Obtiene la version instalada de FPDF desde el archivo.
+ */
+function mk20_get_fpdf_version() {
+    $file = MK20_CERT_PATH . 'lib/fpdf/fpdf.php';
+    if ( ! file_exists( $file ) ) {
+        return '0';
+    }
+    $content = file_get_contents( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+    if ( preg_match( "/const\s+VERSION\s*=\s*'([^']+)'/", $content, $m ) ) {
+        return $m[1];
+    }
+    return '0';
+}
+
+/**
+ * Consulta Packagist para obtener la ultima version estable de FPDF.
+ * Cachea el resultado en un transient (7 dias).
+ */
+function mk20_check_fpdf_update() {
+    $current = mk20_get_fpdf_version();
+    $cache   = get_transient( 'mk20_fpdf_update_check' );
+
+    if ( $cache !== false ) {
+        return $cache;
+    }
+
+    $response = wp_remote_get( 'https://packagist.org/packages/fpdf-mirror/fpdf.json', array(
+        'timeout' => 10,
+    ) );
+
+    if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) {
+        return null;
+    }
+
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( ! is_array( $body ) || ! isset( $body['package']['versions'] ) ) {
+        return null;
+    }
+
+    $versions = array_keys( $body['package']['versions'] );
+    $stable   = array();
+    foreach ( $versions as $v ) {
+        if ( preg_match( '/^\d+\.\d+(\.\d+)?$/', $v ) ) {
+            $stable[] = $v;
+        }
+    }
+
+    if ( empty( $stable ) ) {
+        return null;
+    }
+
+    usort( $stable, 'version_compare' );
+    $latest = end( $stable );
+
+    $current_normalized = $current;
+    if ( substr_count( $current_normalized, '.' ) === 1 ) {
+        $current_normalized .= '.0';
+    }
+
+    $result = array(
+        'current' => $current,
+        'latest'  => $latest,
+        'update'  => version_compare( $latest, $current_normalized, '>' ),
+    );
+
+    set_transient( 'mk20_fpdf_update_check', $result, WEEK_IN_SECONDS );
+
+    return $result;
+}
+
+/**
+ * Aviso en admin si hay una nueva version de FPDF disponible.
+ */
+function mk20_fpdf_update_admin_notice() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    $screen = get_current_screen();
+    if ( $screen && ( $screen->id === 'toplevel_page_mk20-certificates' || $screen->id === 'certificates_page_mk20-certificates-settings' ) ) {
+        $info = mk20_check_fpdf_update();
+        if ( $info && $info['update'] ) {
+            echo '<div class="notice notice-warning is-dismissible"><p>';
+            printf(
+                esc_html__( 'MK20 Custom Certificates: La librería FPDF está desactualizada (v%s). Hay disponible v%s. Revisa los cambios en %s.', 'mk20-custom-certificates' ),
+                esc_html( $info['current'] ),
+                esc_html( $info['latest'] ),
+                '<a href="http://www.fpdf.org/en/changelog.php" target="_blank" rel="noopener">changelog</a>'
+            );
+            echo '</p></div>';
+        }
+    }
+}
+
 require_once MK20_CERT_PATH . 'includes/helpers.php';
 require_once MK20_CERT_PATH . 'includes/class-mk20-admin.php';
 require_once MK20_CERT_PATH . 'includes/class-mk20-pdf-engine.php';
+require_once MK20_CERT_PATH . 'includes/class-mk20-rest.php';
 
 add_action( 'plugins_loaded', 'mk20_custom_certificates_init' );
+
+register_activation_hook( __FILE__, 'mk20_activate_flush_rewrites' );
+function mk20_activate_flush_rewrites() {
+    add_rewrite_rule( '^verificar/([a-f0-9]{12,})/?$', 'index.php?mk20_verificar=$matches[1]', 'top' );
+    add_rewrite_tag( '%mk20_verificar%', '([a-f0-9]{12,})' );
+    flush_rewrite_rules();
+}
 
 function mk20_protect_cert_directory() {
     $upload_dir = wp_upload_dir();
@@ -59,16 +162,19 @@ function mk20_custom_certificates_init() {
         new MK20_Admin();
     }
 
+    new MK20_REST();
+
     add_action( 'learndash_course_completed', 'mk20_handle_course_completion', 10, 1 );
 
     add_action( 'admin_post_mk20_download_cert', 'mk20_download_certificate' );
     add_action( 'admin_post_nopriv_mk20_download_cert', 'mk20_download_certificate' );
 
-    add_action( 'admin_post_mk20_delete_cert', 'mk20_delete_certificate' );
     add_action( 'admin_post_mk20_download_ext_cert', 'mk20_download_external_certificate' );
     add_action( 'admin_post_nopriv_mk20_download_ext_cert', 'mk20_download_external_certificate' );
     add_action( 'admin_post_mk20_reset_settings', 'mk20_reset_to_defaults' );
     add_action( 'admin_post_mk20_dismiss_rejected', 'mk20_dismiss_rejected_certificates' );
+
+    add_action( 'admin_notices', 'mk20_fpdf_update_admin_notice' );
 
     add_action( 'bp_setup_nav', 'mk20_certificates_profile_tab', 100 );
 }
@@ -135,6 +241,15 @@ function mk20_handle_course_completion( $data ) {
     if ( $pdf_path ) {
         update_user_meta( $user_id, '_mk20_cert_path_' . $course_id, $pdf_path );
         update_user_meta( $user_id, '_mk20_cert_date_' . $course_id, current_time( 'mysql' ) );
+
+        $integrity_hash = $pdf_engine->get_last_integrity_hash();
+        $timestamp      = $pdf_engine->get_last_timestamp();
+        $verify_hash    = $pdf_engine->get_last_verify_hash();
+        if ( $integrity_hash ) {
+            update_user_meta( $user_id, '_mk20_cert_hash_' . $course_id, $integrity_hash );
+            update_user_meta( $user_id, '_mk20_cert_ts_' . $course_id, $timestamp );
+            update_user_meta( $user_id, '_mk20_cert_verify_' . $course_id, $verify_hash );
+        }
 
         $upload_dir = wp_upload_dir();
         $filename   = basename( $pdf_path );
@@ -231,6 +346,10 @@ function mk20_download_certificate() {
         wp_die( 'Debes iniciar sesión para descargar tu certificado.' );
     }
 
+    if ( current_user_can( 'manage_options' ) && isset( $_GET['user_id'] ) ) {
+        $user_id = absint( $_GET['user_id'] );
+    }
+
     $cert_path = get_user_meta( $user_id, '_mk20_cert_path_' . $course_id, true );
     if ( ! $cert_path || ! file_exists( $cert_path ) ) {
         wp_die( 'El certificado no está disponible. Completa el curso primero.' );
@@ -280,6 +399,10 @@ function mk20_download_external_certificate() {
         wp_die( 'Debes iniciar sesión para descargar tu certificado.' );
     }
 
+    if ( current_user_can( 'manage_options' ) && isset( $_GET['user_id'] ) ) {
+        $user_id = absint( $_GET['user_id'] );
+    }
+
     $cert_path = get_user_meta( $user_id, '_mk20_ext_cert_path_' . $hash, true );
     if ( ! $cert_path || ! file_exists( $cert_path ) ) {
         wp_die( 'El certificado no está disponible.' );
@@ -307,50 +430,6 @@ function mk20_download_external_certificate() {
 
     // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
     echo $contents;
-    exit;
-}
-
-/**
- * Endpoint para que administradores eliminen el certificado de un usuario.
- * URL: /wp-admin/admin-post.php?action=mk20_delete_cert&user_id=XX&course_id=XX
- */
-function mk20_delete_certificate() {
-    if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( 'No tienes permiso para realizar esta acción.' );
-    }
-
-    $user_id   = isset( $_GET['user_id'] ) ? intval( $_GET['user_id'] ) : 0;
-    $course_id = isset( $_GET['course_id'] ) ? intval( $_GET['course_id'] ) : 0;
-
-    if ( ! $user_id || ! $course_id ) {
-        wp_die( 'Parámetros inválidos.' );
-    }
-
-    if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( $_GET['_wpnonce'] ), 'mk20_delete_cert_' . $user_id . '_' . $course_id ) ) {
-        wp_die( 'Enlace inválido o expirado.' );
-    }
-
-    $cert_path   = get_user_meta( $user_id, '_mk20_cert_path_' . $course_id, true );
-    $attach_id   = get_user_meta( $user_id, '_mk20_cert_attachment_id_' . $course_id, true );
-
-    // Eliminar el archivo PDF
-    if ( $cert_path && file_exists( $cert_path ) ) {
-        wp_delete_file( $cert_path );
-    }
-
-    // Eliminar el attachment de la biblioteca multimedia
-    if ( $attach_id && get_post( $attach_id ) ) {
-        wp_delete_attachment( $attach_id, true );
-    }
-
-    // Limpiar meta del usuario
-    delete_user_meta( $user_id, '_mk20_cert_path_' . $course_id );
-    delete_user_meta( $user_id, '_mk20_cert_url_' . $course_id );
-    delete_user_meta( $user_id, '_mk20_cert_date_' . $course_id );
-    delete_user_meta( $user_id, '_mk20_cert_attachment_id_' . $course_id );
-
-    set_transient( 'mk20_cert_deleted_notice', __( 'Certificado eliminado correctamente.', 'mk20-custom-certificates' ), 30 );
-    wp_safe_redirect( remove_query_arg( 'deleted', wp_get_referer() ) );
     exit;
 }
 
@@ -390,6 +469,12 @@ function mk20_certificates_screen_content() {
     $displayed_user_id = bp_displayed_user_id();
     $is_own_profile    = bp_is_my_profile();
 
+    if ( isset( $_GET['cert_deleted'] ) && absint( $_GET['cert_deleted'] ) === 1 ) {
+        echo '<div class="bp-feedback success"><span class="bp-icon" aria-hidden="true"></span><p>';
+        esc_html_e( 'Certificado eliminado correctamente.', 'mk20-custom-certificates' );
+        echo '</p></div>';
+    }
+
     if ( ! $is_own_profile && ! current_user_can( 'manage_options' ) ) {
         echo '<p>' . esc_html__( 'Este usuario no tiene certificados visibles.', 'mk20-custom-certificates' ) . '</p>';
         return;
@@ -426,18 +511,13 @@ function mk20_certificates_screen_content() {
 
     $native_download_url = admin_url( 'admin-post.php?action=mk20_download_cert' );
     $ext_download_url    = admin_url( 'admin-post.php?action=mk20_download_ext_cert' );
-    $is_admin            = current_user_can( 'manage_options' );
-    $current_user_is_owner = bp_is_my_profile();
 
     echo '<table class="mk20-certificates-table" style="width:100%; border-collapse: collapse;">';
     echo '<thead><tr style="text-align:left; border-bottom:2px solid #e2e8f0;">
             <th style="padding:12px 8px;">' . esc_html__( 'Curso', 'mk20-custom-certificates' ) . '</th>
             <th style="padding:12px 8px;">' . esc_html__( 'Fecha de emisión', 'mk20-custom-certificates' ) . '</th>
-            <th style="padding:12px 8px;">' . esc_html__( 'Descargar', 'mk20-custom-certificates' ) . '</th>';
-    if ( $is_admin ) {
-        echo '<th style="padding:12px 8px;">' . esc_html__( 'Acciones', 'mk20-custom-certificates' ) . '</th>';
-    }
-    echo '</tr></thead><tbody>';
+            <th style="padding:12px 8px;">' . esc_html__( 'Descargar', 'mk20-custom-certificates' ) . '</th>
+          </tr></thead><tbody>';
 
     foreach ( $results as $row ) {
         $is_external = strpos( $row->meta_key, '_mk20_ext_cert_path_' ) === 0;
@@ -469,13 +549,6 @@ function mk20_certificates_screen_content() {
                    ' . esc_html__( 'Descargar PDF', 'mk20-custom-certificates' ) . '
                 </a>
               </td>';
-        if ( $is_admin ) {
-            echo '<td style="padding:10px 8px;">
-                    <a href="#" class="button btn-delete" style="text-decoration:none; padding:6px 14px; border-radius:4px; background:#ef4444; color:#fff; display:inline-block; opacity:0.5; cursor:not-allowed;">
-                       ' . esc_html__( 'Eliminar', 'mk20-custom-certificates' ) . '
-                    </a>
-                  </td>';
-        }
         echo '</tr>';
     }
 
@@ -489,9 +562,96 @@ function mk20_certificates_screen_content() {
             background: #059669 !important;
             color: #fff !important;
         }
-        .mk20-certificates-table .btn-delete:hover {
-            background: #dc2626 !important;
-            color: #fff !important;
-        }
     </style>';
+}
+
+add_action( 'admin_post_mk20_delete_cert', 'mk20_handle_delete_cert' );
+add_action( 'admin_post_mk20_delete_ext_cert', 'mk20_handle_delete_ext_cert' );
+
+function mk20_handle_delete_cert() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'No tienes permisos para realizar esta acción.', 'mk20-custom-certificates' ) );
+    }
+
+    $course_id = isset( $_GET['course_id'] ) ? absint( $_GET['course_id'] ) : 0;
+    if ( ! $course_id ) {
+        wp_die( esc_html__( 'ID de curso inválido.', 'mk20-custom-certificates' ) );
+    }
+
+    $nonce = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
+    if ( ! wp_verify_nonce( $nonce, 'mk20_delete_cert_' . $course_id ) ) {
+        wp_die( esc_html__( 'Nonce inválido.', 'mk20-custom-certificates' ) );
+    }
+
+    $user_id = isset( $_GET['user_id'] ) ? absint( $_GET['user_id'] ) : 0;
+    if ( ! $user_id ) {
+        wp_die( esc_html__( 'Usuario no especificado.', 'mk20-custom-certificates' ) );
+    }
+
+    $attachment_id = get_user_meta( $user_id, '_mk20_cert_attachment_id_' . $course_id, true );
+    $file_path     = get_user_meta( $user_id, '_mk20_cert_path_' . $course_id, true );
+
+    if ( $file_path && file_exists( $file_path ) ) {
+        wp_delete_file( $file_path );
+    }
+
+    if ( $attachment_id && get_post( $attachment_id ) ) {
+        wp_delete_attachment( $attachment_id, true );
+    }
+
+    $meta_keys = [ '_mk20_cert_path_', '_mk20_cert_date_', '_mk20_cert_url_', '_mk20_cert_hash_', '_mk20_cert_ts_', '_mk20_cert_verify_', '_mk20_cert_attachment_id_' ];
+    foreach ( $meta_keys as $prefix ) {
+        delete_user_meta( $user_id, $prefix . $course_id );
+    }
+
+    set_transient( 'mk20_cert_deleted_notice', __( 'Certificado eliminado correctamente.', 'mk20-custom-certificates' ), 30 );
+
+    $redirect = remove_query_arg( 'cert_deleted', wp_get_referer() );
+    wp_safe_redirect( $redirect );
+    exit;
+}
+
+function mk20_handle_delete_ext_cert() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'No tienes permisos para realizar esta acción.', 'mk20-custom-certificates' ) );
+    }
+
+    $hash  = isset( $_GET['ext_cert'] ) ? sanitize_text_field( wp_unslash( $_GET['ext_cert'] ) ) : '';
+    if ( empty( $hash ) || strlen( $hash ) !== 32 ) {
+        wp_die( esc_html__( 'Hash de certificado inválido.', 'mk20-custom-certificates' ) );
+    }
+
+    $nonce = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
+    if ( ! wp_verify_nonce( $nonce, 'mk20_delete_ext_cert_' . $hash ) ) {
+        wp_die( esc_html__( 'Nonce inválido.', 'mk20-custom-certificates' ) );
+    }
+
+    $user_id = isset( $_GET['user_id'] ) ? absint( $_GET['user_id'] ) : 0;
+    if ( ! $user_id ) {
+        $user_id = bp_displayed_user_id();
+    }
+    if ( ! $user_id ) {
+        wp_die( esc_html__( 'Usuario no especificado.', 'mk20-custom-certificates' ) );
+    }
+
+    $file_path = get_user_meta( $user_id, '_mk20_ext_cert_path_' . $hash, true );
+    if ( $file_path && file_exists( $file_path ) ) {
+        wp_delete_file( $file_path );
+    }
+
+    $attachment_id = get_user_meta( $user_id, '_mk20_ext_cert_attachment_id_' . $hash, true );
+    if ( $attachment_id ) {
+        wp_delete_attachment( $attachment_id, true );
+    }
+
+    $meta_keys = [ '_mk20_ext_cert_path_', '_mk20_ext_cert_date_', '_mk20_ext_cert_url_', '_mk20_ext_course_title_', '_mk20_ext_cert_hash_', '_mk20_ext_cert_ts_', '_mk20_ext_cert_attachment_id_' ];
+    foreach ( $meta_keys as $prefix ) {
+        delete_user_meta( $user_id, $prefix . $hash );
+    }
+
+    mk20_api_audit_log( "DELETE_CERT user_id={$user_id} hash={$hash} tipo=externa" );
+
+    $redirect = add_query_arg( 'cert_deleted', '1', wp_get_referer() );
+    wp_safe_redirect( $redirect );
+    exit;
 }
