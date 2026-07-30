@@ -419,3 +419,115 @@ function mk20_sync_external_certificates( $user_id ) {
     set_transient( $transient_key, 'done_' . $imported, 6 * HOUR_IN_SECONDS );
     mk20_api_audit_log( "OK user_id={$user_id} dni={$dni} importados={$imported}" );
 }
+
+/**
+ * Construye el cuerpo multipart/form-data para subir un archivo con campos.
+ *
+ * @param string $boundary  Delimitador multipart.
+ * @param string $file_path Ruta absoluta del archivo PDF.
+ * @param array  $fields    Campos del formulario (clave => valor).
+ * @return string Cuerpo de la peticion multipart.
+ */
+function mk20_build_multipart_body( $boundary, $file_path, $fields ) {
+    $body            = '';
+    $file_contents   = file_get_contents( $file_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+    $filename        = basename( $file_path );
+
+    $body .= '--' . $boundary . "\r\n";
+    $body .= 'Content-Disposition: form-data; name="pdf_file"; filename="' . $filename . '"' . "\r\n";
+    $body .= 'Content-Type: application/pdf' . "\r\n";
+    $body .= 'Content-Transfer-Encoding: binary' . "\r\n\r\n";
+    $body .= $file_contents . "\r\n";
+
+    foreach ( $fields as $key => $value ) {
+        $body .= '--' . $boundary . "\r\n";
+        $body .= 'Content-Disposition: form-data; name="' . $key . '"' . "\r\n\r\n";
+        $body .= $value . "\r\n";
+    }
+
+    $body .= '--' . $boundary . "--\r\n";
+
+    return $body;
+}
+
+/**
+ * Sube un certificado PDF generado localmente a la API externa.
+ *
+ * La URL de la API se configura mediante la constante MK20_EXT_UPLOAD_URL.
+ * Si la constante esta vacia o no definida, la funcion no hace nada.
+ *
+ * @param string $pdf_path        Ruta absoluta del PDF generado.
+ * @param int    $user_id         ID del usuario en WordPress.
+ * @param int    $course_id       ID del curso completado.
+ * @param string $course_title    Titulo del curso (limpio).
+ * @param string $student_name    Nombre completo del alumno.
+ * @param string $completion_date Fecha de finalizacion (formato d/m/Y).
+ */
+function mk20_upload_certificate_to_external_api( $pdf_path, $user_id, $course_id, $course_title, $student_name, $completion_date ) {
+    if ( empty( MK20_EXT_UPLOAD_URL ) ) {
+        return;
+    }
+
+    $uploaded_id = get_user_meta( $user_id, '_mk20_cert_uploaded_id_' . $course_id, true );
+    if ( $uploaded_id ) {
+        mk20_api_audit_log( "UPLOAD_SKIP user_id={$user_id} course_id={$course_id} motivo=ya_subido external_id={$uploaded_id}" );
+        return;
+    }
+
+    if ( ! file_exists( $pdf_path ) ) {
+        mk20_api_audit_log( "UPLOAD_ERROR user_id={$user_id} course_id={$course_id} motivo=archivo_no_existe" );
+        return;
+    }
+
+    $options = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
+    $dni     = mk20_get_buddyboss_field( $user_id, $options['bb_field_dni'], '' );
+
+    if ( empty( $dni ) ) {
+        mk20_api_audit_log( "UPLOAD_ERROR user_id={$user_id} course_id={$course_id} motivo=sin_dni" );
+        return;
+    }
+
+    $headers = array();
+    if ( ! empty( MK20_EXT_API_TOKEN ) ) {
+        $headers['Authorization'] = 'Bearer ' . MK20_EXT_API_TOKEN;
+    }
+
+    $boundary               = wp_generate_password( 24, false );
+    $headers['Content-Type'] = 'multipart/form-data; boundary=' . $boundary;
+
+    $body = mk20_build_multipart_body( $boundary, $pdf_path, array(
+        'dni'             => $dni,
+        'student_name'    => $student_name,
+        'course_id'       => $course_id,
+        'course_title'    => $course_title,
+        'completion_date' => $completion_date,
+        'issue_date'      => current_time( 'mysql' ),
+    ) );
+
+    $response = wp_remote_post( MK20_EXT_UPLOAD_URL, array(
+        'timeout' => 60,
+        'headers' => $headers,
+        'body'    => $body,
+    ) );
+
+    if ( is_wp_error( $response ) ) {
+        mk20_api_audit_log( "UPLOAD_ERROR user_id={$user_id} course_id={$course_id} motivo=" . $response->get_error_message() );
+        return;
+    }
+
+    $status_code = wp_remote_retrieve_response_code( $response );
+    $body_resp   = json_decode( wp_remote_retrieve_body( $response ), true );
+    $external_id = isset( $body_resp['id'] ) ? sanitize_text_field( $body_resp['id'] ) : '';
+
+    if ( 201 === $status_code ) {
+        update_user_meta( $user_id, '_mk20_cert_uploaded_id_' . $course_id, $external_id );
+        mk20_api_audit_log( "UPLOAD_OK user_id={$user_id} course_id={$course_id} external_id={$external_id}" );
+    } elseif ( 409 === $status_code ) {
+        update_user_meta( $user_id, '_mk20_cert_uploaded_id_' . $course_id, $external_id ?: 'duplicated' );
+        mk20_api_audit_log( "UPLOAD_DUP user_id={$user_id} course_id={$course_id} motivo=ya_existe_en_externo" );
+    } elseif ( 401 === $status_code ) {
+        mk20_api_audit_log( "UPLOAD_ERROR user_id={$user_id} course_id={$course_id} motivo=token_invalido http={$status_code}" );
+    } else {
+        mk20_api_audit_log( "UPLOAD_ERROR user_id={$user_id} course_id={$course_id} motivo=http_error http={$status_code}" );
+    }
+}

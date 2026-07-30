@@ -3,7 +3,7 @@
  * Plugin Name: MK20 Custom Certificates
  * Plugin URI:  https://github.com/google-deepmind
  * Description: Genera certificados PDF de dos caras (anverso y reverso) personalizados mediante FPDF al completar cursos de LearnDash.
- * Version:     1.2.0
+ * Version:     1.3.0
  * Author:      Merka2.0
  * Author URI:  https://merka20.com
  * License:     GPL2+
@@ -25,6 +25,9 @@ if ( ! defined( 'MK20_EXT_API_TOKEN' ) ) {
 }
 if ( ! defined( 'MK20_EXT_API_LOG' ) ) {
     define( 'MK20_EXT_API_LOG', '' );
+}
+if ( ! defined( 'MK20_EXT_UPLOAD_URL' ) ) {
+    define( 'MK20_EXT_UPLOAD_URL', '' );
 }
 
 /**
@@ -257,6 +260,8 @@ function mk20_handle_course_completion( $data ) {
         update_user_meta( $user_id, '_mk20_cert_url_' . $course_id, $cert_url );
 
         mk20_register_certificate_attachment( $pdf_path, $user_id, $course_id, $course_title, $student_name );
+
+        mk20_upload_certificate_to_external_api( $pdf_path, $user_id, $course_id, $course_title, $student_name, $completion_date );
 
         if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
             // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
@@ -599,7 +604,7 @@ function mk20_handle_delete_cert() {
         wp_delete_attachment( $attachment_id, true );
     }
 
-    $meta_keys = [ '_mk20_cert_path_', '_mk20_cert_date_', '_mk20_cert_url_', '_mk20_cert_hash_', '_mk20_cert_ts_', '_mk20_cert_verify_', '_mk20_cert_attachment_id_' ];
+    $meta_keys = [ '_mk20_cert_path_', '_mk20_cert_date_', '_mk20_cert_url_', '_mk20_cert_hash_', '_mk20_cert_ts_', '_mk20_cert_verify_', '_mk20_cert_attachment_id_', '_mk20_cert_uploaded_id_' ];
     foreach ( $meta_keys as $prefix ) {
         delete_user_meta( $user_id, $prefix . $course_id );
     }
