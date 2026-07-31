@@ -266,7 +266,7 @@ class MK20_PDF_Engine {
             $qr_temp = download_url( $qr_url, 5 );
             if ( ! is_wp_error( $qr_temp ) ) {
                 $pdf->Image( $qr_temp, 257, 188, 20, 20 );
-                unlink( $qr_temp );
+                wp_delete_file( $qr_temp );
             }
 
             // Crear el directorio en WordPress si no existe

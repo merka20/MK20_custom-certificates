@@ -81,7 +81,10 @@ class MK20_Admin {
         <div class="notice notice-warning is-dismissible">
             <p>
                 <strong><?php esc_html_e( 'MK20 Certificados:', 'mk20-custom-certificates' ); ?></strong>
-                <?php echo esc_html( sprintf( _n( 'Hay %d certificado externo rechazado por seguridad.', 'Hay %d certificados externos rechazados por seguridad.', count( $rejected ), 'mk20-custom-certificates' ), count( $rejected ) ) ); ?>
+                <?php
+                /* translators: %d: number of rejected external certificates. */
+                echo esc_html( sprintf( _n( 'Hay %d certificado externo rechazado por seguridad.', 'Hay %d certificados externos rechazados por seguridad.', count( $rejected ), 'mk20-custom-certificates' ), count( $rejected ) ) );
+                ?>
                 <a href="<?php echo esc_url( $settings_url ); ?>"><?php esc_html_e( 'Ver detalles', 'mk20-custom-certificates' ); ?></a>
             </p>
         </div>
@@ -775,31 +778,38 @@ class MK20_Admin {
             wp_die( esc_html__( 'No tienes permisos suficientes.', 'mk20-custom-certificates' ) );
         }
 
-        global $wpdb;
-        $current_page = isset( $_GET['paged'] ) ? max( 1, absint( $_GET['paged'] ) ) : 1;
+        $current_page = max( 1, absint( get_query_var( 'paged', 1 ) ) );
         $per_page     = 20;
         $offset       = ( $current_page - 1 ) * $per_page;
 
-        $total = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->usermeta} WHERE meta_key LIKE %s OR meta_key LIKE %s",
-                $wpdb->esc_like( '_mk20_cert_path_' ) . '%',
-                $wpdb->esc_like( '_mk20_ext_cert_path_' ) . '%'
-            )
-        );
+        $rows  = array();
+        $users = get_users( array( 'fields' => 'ID' ) );
 
-        $results = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT user_id, meta_key, meta_value FROM {$wpdb->usermeta}
-                 WHERE meta_key LIKE %s OR meta_key LIKE %s
-                 ORDER BY user_id ASC, meta_key ASC
-                 LIMIT %d OFFSET %d",
-                $wpdb->esc_like( '_mk20_cert_path_' ) . '%',
-                $wpdb->esc_like( '_mk20_ext_cert_path_' ) . '%',
-                $per_page,
-                $offset
-            )
-        );
+        foreach ( $users as $user_id ) {
+            $user_meta = get_user_meta( $user_id );
+
+            foreach ( $user_meta as $meta_key => $meta_values ) {
+                if ( 0 === strpos( $meta_key, '_mk20_cert_path_' ) || 0 === strpos( $meta_key, '_mk20_ext_cert_path_' ) ) {
+                    foreach ( (array) $meta_values as $meta_value ) {
+                        $rows[] = (object) array(
+                            'user_id' => $user_id,
+                            'mk20_key' => $meta_key,
+                            'mk20_val' => $meta_value,
+                        );
+                    }
+                }
+            }
+        }
+
+        usort( $rows, static function ( $a, $b ) {
+            if ( (int) $a->user_id === (int) $b->user_id ) {
+                return strcmp( $a->mk20_key, $b->mk20_key );
+            }
+            return (int) $a->user_id <=> (int) $b->user_id;
+        } );
+
+        $total   = count( $rows );
+        $results = array_slice( $rows, $offset, $per_page );
 
         $deleted_notice = get_transient( 'mk20_cert_deleted_notice' );
         if ( $deleted_notice ) {
@@ -847,7 +857,7 @@ class MK20_Admin {
                 </thead>
                 <tbody>
                 <?php foreach ( $results as $row ) :
-                    $is_external = strpos( $row->meta_key, '_mk20_ext_cert_path_' ) === 0;
+                    $is_external = strpos( $row->mk20_key, '_mk20_ext_cert_path_' ) === 0;
                     $user_info   = get_userdata( $row->user_id );
 
                     if ( ! $user_info ) {
@@ -855,13 +865,13 @@ class MK20_Admin {
                     }
 
                     if ( $is_external ) {
-                        $hash         = str_replace( '_mk20_ext_cert_path_', '', $row->meta_key );
+                        $hash         = str_replace( '_mk20_ext_cert_path_', '', $row->mk20_key );
                         $course_title = get_user_meta( $row->user_id, '_mk20_ext_course_title_' . $hash, true );
                         $cert_date    = get_user_meta( $row->user_id, '_mk20_ext_cert_date_' . $hash, true );
                         $cert_fmt     = $cert_date ? date_i18n( 'd/m/Y', strtotime( $cert_date ) ) : '—';
                         $download_url = wp_nonce_url( add_query_arg( [ 'ext_cert' => $hash, 'user_id' => $row->user_id ], admin_url( 'admin-post.php?action=mk20_download_ext_cert' ) ), 'mk20_download_ext_cert_' . $hash );
                     } else {
-                        $course_id    = intval( str_replace( '_mk20_cert_path_', '', $row->meta_key ) );
+                        $course_id    = intval( str_replace( '_mk20_cert_path_', '', $row->mk20_key ) );
                         if ( ! $course_id ) {
                             continue;
                         }

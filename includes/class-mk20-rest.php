@@ -57,8 +57,12 @@ class MK20_REST {
 
     private function get_code_from_request() {
         $code = get_query_var( 'mk20_verificar' );
-        if ( empty( $code ) && isset( $_GET['mk20_verificar'] ) && preg_match( '#^[a-f0-9]{12,}$#', $_GET['mk20_verificar'] ) ) {
-            $code = sanitize_text_field( wp_unslash( $_GET['mk20_verificar'] ) );
+        if ( empty( $code ) ) {
+            // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Pagina publica de verificacion de solo lectura; no cambia estado.
+            $candidate = isset( $_GET['mk20_verificar'] ) ? sanitize_text_field( wp_unslash( $_GET['mk20_verificar'] ) ) : '';
+            if ( preg_match( '#^[a-f0-9]{12,}$#', $candidate ) ) {
+                $code = $candidate;
+            }
         }
         if ( empty( $code ) ) {
             $path = isset( $_SERVER['REQUEST_URI'] ) ? wp_parse_url( esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) ), PHP_URL_PATH ) : '';
@@ -81,6 +85,11 @@ class MK20_REST {
 
         $code = $this->get_code_from_request();
         header( 'X-Robots-Tag: noindex, nofollow' );
+
+        if ( $this->is_rate_limited() ) {
+            $this->render_rate_limited();
+            exit;
+        }
 
         if ( ! empty( $code ) && ctype_xdigit( $code ) && strlen( $code ) >= 12 ) {
             $data = $this->lookup_certificate( $code );
@@ -128,7 +137,7 @@ class MK20_REST {
         </head>
         <body>
             <div class="card">
-                <?php echo $logo_html; ?>
+                <?php echo wp_kses_post( $logo_html ); ?>
                 <?php if ( $data ) : ?>
                     <div class="icono valido">&#10004;</div>
                     <h1 class="valido"><?php esc_html_e( 'Certificado VÁLIDO', 'mk20-custom-certificates' ); ?></h1>
@@ -196,13 +205,52 @@ class MK20_REST {
         </head>
         <body>
             <div class="card">
-                <?php echo $logo_html; ?>
+                <?php echo wp_kses_post( $logo_html ); ?>
                 <h1><?php esc_html_e( 'Verificar Certificado', 'mk20-custom-certificates' ); ?></h1>
                 <p><?php esc_html_e( 'Introduce el código ID que aparece en la parte inferior del certificado.', 'mk20-custom-certificates' ); ?></p>
                 <form method="get" action="">
                     <input type="text" name="mk20_verificar" placeholder="Ej: d4d0aa13e726" value="<?php echo esc_attr( $prefilled_code ); ?>" required autocomplete="off" pattern="[a-f0-9]{12,}" title="12 caracteres hexadecimales">
                     <button type="submit"><?php esc_html_e( 'Verificar', 'mk20-custom-certificates' ); ?></button>
                 </form>
+                <p style="margin-top:20px; font-size:12px; color:#94a3b8;"><?php esc_html_e( 'Sistema de verificación de certificados Lares Navarra', 'mk20-custom-certificates' ); ?></p>
+            </div>
+        </body>
+        </html>
+        <?php
+    }
+
+    private function render_rate_limited() {
+        $logo_html = $this->get_logo_html();
+        ?>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title><?php esc_html_e( 'Verificar Certificado', 'mk20-custom-certificates' ); ?></title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    background: #f1f5f9;
+                    display: flex; justify-content: center; align-items: center;
+                    min-height: 100vh; padding: 20px;
+                }
+                .card {
+                    background: #fff; border-radius: 12px;
+                    box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+                    padding: 40px; max-width: 420px; width: 100%;
+                    text-align: center;
+                }
+                h1 { font-size: 20px; margin-bottom: 8px; color: #dc2626; }
+                p { color: #64748b; margin-bottom: 20px; font-size: 14px; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <?php echo wp_kses_post( $logo_html ); ?>
+                <h1><?php esc_html_e( 'Demasiados intentos', 'mk20-custom-certificates' ); ?></h1>
+                <p><?php esc_html_e( 'Se ha superado el límite de verificaciones. Espera un minuto e inténtalo de nuevo.', 'mk20-custom-certificates' ); ?></p>
                 <p style="margin-top:20px; font-size:12px; color:#94a3b8;"><?php esc_html_e( 'Sistema de verificación de certificados Lares Navarra', 'mk20-custom-certificates' ); ?></p>
             </div>
         </body>
@@ -227,6 +275,13 @@ class MK20_REST {
     public function verify_certificate( $request ) {
         header( 'X-Robots-Tag: noindex, nofollow' );
 
+        if ( $this->is_rate_limited() ) {
+            return new WP_REST_Response( [
+                'valido' => false,
+                'error'  => 'Demasiados intentos. Inténtalo de nuevo más tarde.',
+            ], 429 );
+        }
+
         $hash = $request->get_param( 'hash' );
         if ( empty( $hash ) || ! ctype_xdigit( $hash ) ) {
             return new WP_REST_Response( [
@@ -247,53 +302,88 @@ class MK20_REST {
         return new WP_REST_Response( array_merge( [ 'valido' => true ], $data ), 200 );
     }
 
+    /**
+     * Limita las peticiones públicas de verificación por IP (transient de 1 minuto).
+     *
+     * @return bool True si la IP superó el límite.
+     */
+    private function is_rate_limited() {
+        $ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+        if ( empty( $ip ) ) {
+            $ip = 'unknown';
+        }
+
+        $transient_key = 'mk20_verify_rl_' . md5( $ip );
+        $count         = (int) get_transient( $transient_key );
+
+        if ( $count >= 20 ) {
+            return true;
+        }
+
+        set_transient( $transient_key, $count + 1, MINUTE_IN_SECONDS );
+
+        return false;
+    }
+
+    /**
+     * Busca un certificado por su código de verificación.
+     * Usa la tabla indexada mk20_certs (code_hash) y cachea el resultado.
+     *
+     * @param string $code Código hexadecimal (12+ caracteres o SHA-256 completo).
+     * @return array|null Datos del certificado o null si no existe.
+     */
     private function lookup_certificate( $code ) {
         global $wpdb;
 
-        $like = $wpdb->esc_like( '_mk20_cert_verify_' ) . '%';
+        $code = strtolower( $code );
+
+        $cache_key = 'mk20_verify_' . md5( $code );
+        $cached    = wp_cache_get( $cache_key, 'mk20_certs' );
+        if ( false !== $cached ) {
+            return $cached;
+        }
 
         if ( strlen( $code ) === 64 ) {
-            $results = $wpdb->get_results(
+            $row = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
                 $wpdb->prepare(
-                    "SELECT user_id, meta_key, meta_value FROM {$wpdb->usermeta}
-                     WHERE meta_key LIKE %s AND meta_value = %s LIMIT 1",
-                    $like,
+                    "SELECT user_id, course_id FROM {$wpdb->prefix}mk20_certs WHERE code_hash = %s LIMIT 1",
                     $code
                 )
             );
         } else {
-            $results = $wpdb->get_results(
+            $row = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
                 $wpdb->prepare(
-                    "SELECT user_id, meta_key, meta_value FROM {$wpdb->usermeta}
-                     WHERE meta_key LIKE %s AND LEFT(meta_value, %d) = %s
-                     LIMIT 1",
-                    $like,
-                    strlen( $code ),
-                    $code
+                    "SELECT user_id, course_id FROM {$wpdb->prefix}mk20_certs WHERE code_hash LIKE %s LIMIT 1",
+                    $wpdb->esc_like( $code ) . '%'
                 )
             );
         }
 
-        if ( empty( $results ) ) {
+        if ( ! $row ) {
+            wp_cache_set( $cache_key, null, 'mk20_certs', 300 );
             return null;
         }
 
-        $row       = $results[0];
-        $user_id   = $row->user_id;
-        $course_id = intval( str_replace( '_mk20_cert_verify_', '', $row->meta_key ) );
+        $user_id   = absint( $row->user_id );
+        $course_id = absint( $row->course_id );
 
         $user_info    = get_userdata( $user_id );
         $course_title = get_the_title( $course_id );
         $cert_ts      = get_user_meta( $user_id, '_mk20_cert_ts_' . $course_id, true );
 
         if ( ! $user_info || ! $course_title ) {
+            wp_cache_set( $cache_key, null, 'mk20_certs', 300 );
             return null;
         }
 
-        return [
+        $result = [
             'titular' => $user_info->display_name,
             'curso'   => $course_title,
             'emitido' => $cert_ts ? get_date_from_gmt( $cert_ts, 'd/m/Y H:i:s' ) : '',
         ];
+
+        wp_cache_set( $cache_key, $result, 'mk20_certs', 600 );
+
+        return $result;
     }
 }

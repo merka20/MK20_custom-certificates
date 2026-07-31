@@ -1,12 +1,15 @@
 <?php
 /**
  * Plugin Name: MK20 Custom Certificates
- * Plugin URI:  https://github.com/google-deepmind
+ * Plugin URI:  https://github.com/merka20/MK20_custom-certificates
  * Description: Genera certificados PDF de dos caras (anverso y reverso) personalizados mediante FPDF al completar cursos de LearnDash.
  * Version:     1.3.0
  * Author:      Merka2.0
  * Author URI:  https://merka20.com
- * License:     GPL2+
+ * License:     GPL-2.0-or-later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Requires at least: 5.0
+ * Requires PHP: 7.4
  * Text Domain: mk20-custom-certificates
  */
 
@@ -16,6 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'MK20_CERT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MK20_CERT_URL', plugin_dir_url( __FILE__ ) );
+define( 'MK20_CERT_DB_VERSION', '1.0.0' );
 
 if ( ! defined( 'MK20_EXT_API_URL' ) ) {
     define( 'MK20_EXT_API_URL', '' );
@@ -115,7 +119,8 @@ function mk20_fpdf_update_admin_notice() {
         if ( $info && $info['update'] ) {
             echo '<div class="notice notice-warning is-dismissible"><p>';
             printf(
-                esc_html__( 'MK20 Custom Certificates: La librería FPDF está desactualizada (v%s). Hay disponible v%s. Revisa los cambios en %s.', 'mk20-custom-certificates' ),
+                /* translators: 1: current FPDF version, 2: latest FPDF version, 3: changelog link. */
+                esc_html__( 'MK20 Custom Certificates: La librería FPDF está desactualizada (v%1$s). Hay disponible v%2$s. Revisa los cambios en %3$s.', 'mk20-custom-certificates' ),
                 esc_html( $info['current'] ),
                 esc_html( $info['latest'] ),
                 '<a href="http://www.fpdf.org/en/changelog.php" target="_blank" rel="noopener">changelog</a>'
@@ -134,31 +139,45 @@ add_action( 'plugins_loaded', 'mk20_custom_certificates_init' );
 
 register_activation_hook( __FILE__, 'mk20_activate_flush_rewrites' );
 function mk20_activate_flush_rewrites() {
+    mk20_create_cert_index_table();
+    mk20_backfill_cert_index();
+
     add_rewrite_rule( '^verificar/([a-f0-9]{12,})/?$', 'index.php?mk20_verificar=$matches[1]', 'top' );
     add_rewrite_tag( '%mk20_verificar%', '([a-f0-9]{12,})' );
     flush_rewrite_rules();
 }
 
 function mk20_protect_cert_directory() {
+    global $wp_filesystem;
+
+    if ( ! function_exists( 'WP_Filesystem' ) ) {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+    }
+    WP_Filesystem();
+
+    if ( ! $wp_filesystem ) {
+        return;
+    }
+
     $upload_dir = wp_upload_dir();
     $cert_dir   = $upload_dir['basedir'] . '/mk20-certificates';
     $htaccess   = $cert_dir . '/.htaccess';
 
-    if ( file_exists( $htaccess ) ) {
+    if ( $wp_filesystem->exists( $htaccess ) ) {
         return;
     }
 
-    if ( ! file_exists( $cert_dir ) ) {
+    if ( ! $wp_filesystem->exists( $cert_dir ) ) {
         wp_mkdir_p( $cert_dir );
     }
 
-    if ( file_exists( $cert_dir ) && is_writable( $cert_dir ) ) {
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_file_put_contents
-        file_put_contents( $htaccess, "Deny from all\n" );
+    if ( $wp_filesystem->exists( $cert_dir ) && $wp_filesystem->is_writable( $cert_dir ) ) {
+        $wp_filesystem->put_contents( $htaccess, "Deny from all\n", FS_CHMOD_FILE );
     }
 }
 
 function mk20_custom_certificates_init() {
+    mk20_ensure_cert_index_table();
     mk20_protect_cert_directory();
 
     if ( is_admin() ) {
@@ -213,10 +232,10 @@ function mk20_api_audit_log( $message ) {
 
 function mk20_dismiss_rejected_certificates() {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( 'No tienes permiso para realizar esta accion.' );
+        wp_die( esc_html__( 'No tienes permiso para realizar esta acción.', 'mk20-custom-certificates' ) );
     }
     if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( $_GET['_wpnonce'] ), 'mk20_dismiss_rejected' ) ) {
-        wp_die( 'Enlace invalido o expirado.' );
+        wp_die( esc_html__( 'Enlace inválido o expirado.', 'mk20-custom-certificates' ) );
     }
     delete_option( 'mk20_rejected_certificates' );
     wp_safe_redirect( admin_url( 'options-general.php?page=mk20-certificates' ) );
@@ -252,6 +271,7 @@ function mk20_handle_course_completion( $data ) {
             update_user_meta( $user_id, '_mk20_cert_hash_' . $course_id, $integrity_hash );
             update_user_meta( $user_id, '_mk20_cert_ts_' . $course_id, $timestamp );
             update_user_meta( $user_id, '_mk20_cert_verify_' . $course_id, $verify_hash );
+            mk20_index_certificate( $user_id, $course_id, $verify_hash );
         }
 
         $upload_dir = wp_upload_dir();
@@ -319,11 +339,11 @@ function mk20_register_certificate_attachment( $pdf_path, $user_id, $course_id, 
  */
 function mk20_reset_to_defaults() {
     if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( 'No tienes permiso para realizar esta acción.' );
+        wp_die( esc_html__( 'No tienes permiso para realizar esta acción.', 'mk20-custom-certificates' ) );
     }
 
     if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( $_GET['_wpnonce'] ), 'mk20_reset_settings' ) ) {
-        wp_die( 'Enlace inválido o expirado.' );
+        wp_die( esc_html__( 'Enlace inválido o expirado.', 'mk20-custom-certificates' ) );
     }
 
     delete_option( 'mk20_cert_settings' );
@@ -339,16 +359,16 @@ function mk20_reset_to_defaults() {
 function mk20_download_certificate() {
     $course_id = isset( $_GET['course_id'] ) ? intval( $_GET['course_id'] ) : 0;
     if ( ! $course_id ) {
-        wp_die( 'Curso no especificado.' );
+        wp_die( esc_html__( 'Curso no especificado.', 'mk20-custom-certificates' ) );
     }
 
     if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( $_GET['_wpnonce'] ), 'mk20_download_cert_' . $course_id ) ) {
-        wp_die( 'Enlace inválido o expirado.' );
+        wp_die( esc_html__( 'Enlace inválido o expirado.', 'mk20-custom-certificates' ) );
     }
 
     $user_id = get_current_user_id();
     if ( ! $user_id ) {
-        wp_die( 'Debes iniciar sesión para descargar tu certificado.' );
+        wp_die( esc_html__( 'Debes iniciar sesión para descargar tu certificado.', 'mk20-custom-certificates' ) );
     }
 
     if ( current_user_can( 'manage_options' ) && isset( $_GET['user_id'] ) ) {
@@ -357,7 +377,7 @@ function mk20_download_certificate() {
 
     $cert_path = get_user_meta( $user_id, '_mk20_cert_path_' . $course_id, true );
     if ( ! $cert_path || ! file_exists( $cert_path ) ) {
-        wp_die( 'El certificado no está disponible. Completa el curso primero.' );
+        wp_die( esc_html__( 'El certificado no está disponible. Completa el curso primero.', 'mk20-custom-certificates' ) );
     }
 
     $filename = basename( $cert_path );
@@ -372,7 +392,7 @@ function mk20_download_certificate() {
 
     $contents = $wp_filesystem->get_contents( $cert_path );
     if ( false === $contents ) {
-        wp_die( 'Error al leer el certificado.' );
+        wp_die( esc_html__( 'Error al leer el certificado.', 'mk20-custom-certificates' ) );
     }
 
     header( 'Content-Type: application/pdf' );
@@ -392,16 +412,16 @@ function mk20_download_certificate() {
 function mk20_download_external_certificate() {
     $hash = isset( $_GET['ext_cert'] ) ? sanitize_key( $_GET['ext_cert'] ) : '';
     if ( empty( $hash ) ) {
-        wp_die( 'Certificado no especificado.' );
+        wp_die( esc_html__( 'Certificado no especificado.', 'mk20-custom-certificates' ) );
     }
 
     if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( $_GET['_wpnonce'] ), 'mk20_download_ext_cert_' . $hash ) ) {
-        wp_die( 'Enlace inválido o expirado.' );
+        wp_die( esc_html__( 'Enlace inválido o expirado.', 'mk20-custom-certificates' ) );
     }
 
     $user_id = get_current_user_id();
     if ( ! $user_id ) {
-        wp_die( 'Debes iniciar sesión para descargar tu certificado.' );
+        wp_die( esc_html__( 'Debes iniciar sesión para descargar tu certificado.', 'mk20-custom-certificates' ) );
     }
 
     if ( current_user_can( 'manage_options' ) && isset( $_GET['user_id'] ) ) {
@@ -410,7 +430,7 @@ function mk20_download_external_certificate() {
 
     $cert_path = get_user_meta( $user_id, '_mk20_ext_cert_path_' . $hash, true );
     if ( ! $cert_path || ! file_exists( $cert_path ) ) {
-        wp_die( 'El certificado no está disponible.' );
+        wp_die( esc_html__( 'El certificado no está disponible.', 'mk20-custom-certificates' ) );
     }
 
     $filename = basename( $cert_path );
@@ -425,7 +445,7 @@ function mk20_download_external_certificate() {
 
     $contents = $wp_filesystem->get_contents( $cert_path );
     if ( false === $contents ) {
-        wp_die( 'Error al leer el certificado.' );
+        wp_die( esc_html__( 'Error al leer el certificado.', 'mk20-custom-certificates' ) );
     }
 
     header( 'Content-Type: application/pdf' );
@@ -474,6 +494,7 @@ function mk20_certificates_screen_content() {
     $displayed_user_id = bp_displayed_user_id();
     $is_own_profile    = bp_is_my_profile();
 
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Flag de solo lectura tras redireccion post-eliminacion; el nonce se verifico en la accion de borrado.
     if ( isset( $_GET['cert_deleted'] ) && absint( $_GET['cert_deleted'] ) === 1 ) {
         echo '<div class="bp-feedback success"><span class="bp-icon" aria-hidden="true"></span><p>';
         esc_html_e( 'Certificado eliminado correctamente.', 'mk20-custom-certificates' );
@@ -493,16 +514,24 @@ function mk20_certificates_screen_content() {
     $results   = wp_cache_get( $cache_key, 'mk20_certificates' );
 
     if ( false === $results ) {
-        global $wpdb;
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-        $results = $wpdb->get_results( $wpdb->prepare(
-            "SELECT meta_key, meta_value FROM {$wpdb->usermeta}
-             WHERE user_id = %d AND (meta_key LIKE %s OR meta_key LIKE %s)
-             ORDER BY meta_key ASC",
-            $displayed_user_id,
-            '_mk20_cert_path_%',
-            '_mk20_ext_cert_path_%'
-        ) );
+        $results   = array();
+        $user_meta = get_user_meta( $displayed_user_id );
+
+        foreach ( $user_meta as $meta_key => $meta_values ) {
+            if ( 0 === strpos( $meta_key, '_mk20_cert_path_' ) || 0 === strpos( $meta_key, '_mk20_ext_cert_path_' ) ) {
+                foreach ( (array) $meta_values as $meta_value ) {
+                    $results[] = (object) array(
+                        'user_id'   => $displayed_user_id,
+                        'mk20_key'  => $meta_key,
+                        'mk20_val'  => $meta_value,
+                    );
+                }
+            }
+        }
+
+        usort( $results, static function ( $a, $b ) {
+            return strcmp( $a->mk20_key, $b->mk20_key );
+        } );
 
         wp_cache_set( $cache_key, $results, 'mk20_certificates', 3600 );
     }
@@ -525,16 +554,16 @@ function mk20_certificates_screen_content() {
           </tr></thead><tbody>';
 
     foreach ( $results as $row ) {
-        $is_external = strpos( $row->meta_key, '_mk20_ext_cert_path_' ) === 0;
+        $is_external = strpos( $row->mk20_key, '_mk20_ext_cert_path_' ) === 0;
 
         if ( $is_external ) {
-            $hash          = str_replace( '_mk20_ext_cert_path_', '', $row->meta_key );
+            $hash          = str_replace( '_mk20_ext_cert_path_', '', $row->mk20_key );
             $course_title  = get_user_meta( $displayed_user_id, '_mk20_ext_course_title_' . $hash, true );
             $cert_date     = get_user_meta( $displayed_user_id, '_mk20_ext_cert_date_' . $hash, true );
             $cert_date_fmt = $cert_date ? date_i18n( 'd/m/Y', strtotime( $cert_date ) ) : '—';
             $download_url  = wp_nonce_url( add_query_arg( 'ext_cert', $hash, $ext_download_url ), 'mk20_download_ext_cert_' . $hash );
         } else {
-            $course_id     = intval( str_replace( '_mk20_cert_path_', '', $row->meta_key ) );
+            $course_id     = intval( str_replace( '_mk20_cert_path_', '', $row->mk20_key ) );
             if ( ! $course_id ) {
                 continue;
             }
@@ -608,6 +637,8 @@ function mk20_handle_delete_cert() {
     foreach ( $meta_keys as $prefix ) {
         delete_user_meta( $user_id, $prefix . $course_id );
     }
+
+    mk20_remove_certificate_index( $user_id, $course_id );
 
     set_transient( 'mk20_cert_deleted_notice', __( 'Certificado eliminado correctamente.', 'mk20-custom-certificates' ), 30 );
 

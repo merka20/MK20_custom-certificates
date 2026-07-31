@@ -451,6 +451,127 @@ function mk20_build_multipart_body( $boundary, $file_path, $fields ) {
 }
 
 /**
+ * Devuelve el nombre de la tabla de indice de certificados.
+ *
+ * @return string
+ */
+function mk20_get_cert_index_table() {
+    global $wpdb;
+
+    return $wpdb->prefix . 'mk20_certs';
+}
+
+/**
+ * Crea la tabla de indice de certificados.
+ * Contiene el hash de verificacion (code_hash) indexado para acelerar las
+ * busquedas publicas y evitar escanear toda la usermeta en cada request.
+ */
+function mk20_create_cert_index_table() {
+    global $wpdb;
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+    $table          = mk20_get_cert_index_table();
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE {$table} (
+        id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+        user_id bigint(20) unsigned NOT NULL,
+        course_id bigint(20) unsigned NOT NULL,
+        code_hash char(64) NOT NULL,
+        issued_at datetime NOT NULL,
+        PRIMARY KEY  (id),
+        KEY code_hash (code_hash),
+        KEY user_course (user_id, course_id)
+    ) {$charset_collate};";
+
+    dbDelta( $sql );
+
+    update_option( 'mk20_cert_index_db_version', '1.0.0' );
+}
+
+/**
+ * Crea la tabla si falta (usado tambien en upgrades sin reactivacion).
+ */
+function mk20_ensure_cert_index_table() {
+    if ( get_option( 'mk20_cert_index_db_version' ) === '1.0.0' ) {
+        return;
+    }
+    mk20_create_cert_index_table();
+    mk20_backfill_cert_index();
+}
+
+/**
+ * Inserta o actualiza el indice de un certificado nativo.
+ *
+ * @param int    $user_id     ID del usuario.
+ * @param int    $course_id   ID del curso.
+ * @param string $verify_hash Hash SHA-256 de verificacion.
+ */
+function mk20_index_certificate( $user_id, $course_id, $verify_hash ) {
+    if ( empty( $verify_hash ) ) {
+        return;
+    }
+
+    global $wpdb;
+
+    $wpdb->replace( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Escritura UPSERT sobre tabla propia; no aplica cache de lectura.
+        mk20_get_cert_index_table(),
+        array(
+            'user_id'   => absint( $user_id ),
+            'course_id' => absint( $course_id ),
+            'code_hash' => strtolower( sanitize_text_field( $verify_hash ) ),
+            'issued_at' => current_time( 'mysql' ),
+        ),
+        array( '%d', '%d', '%s', '%s' )
+    );
+}
+
+/**
+ * Elimina el indice de un certificado nativo.
+ *
+ * @param int $user_id   ID del usuario.
+ * @param int $course_id ID del curso.
+ */
+function mk20_remove_certificate_index( $user_id, $course_id ) {
+    global $wpdb;
+
+    $wpdb->delete( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Escritura DELETE sobre tabla propia; no aplica cache de lectura.
+        mk20_get_cert_index_table(),
+        array(
+            'user_id'   => absint( $user_id ),
+            'course_id' => absint( $course_id ),
+        ),
+        array( '%d', '%d' )
+    );
+}
+
+/**
+ * Puebla la tabla de indice con los certificados nativos ya emitidos
+ * (migracion desde user meta). Solo se ejecuta una vez.
+ */
+function mk20_backfill_cert_index() {
+    $users = get_users( array( 'fields' => 'ID' ) );
+
+    foreach ( $users as $user_id ) {
+        $user_meta = get_user_meta( $user_id );
+
+        foreach ( $user_meta as $meta_key => $meta_values ) {
+            if ( 0 !== strpos( $meta_key, '_mk20_cert_verify_' ) ) {
+                continue;
+            }
+
+            $course_id = intval( str_replace( '_mk20_cert_verify_', '', $meta_key ) );
+            foreach ( (array) $meta_values as $meta_value ) {
+                if ( $course_id && $meta_value ) {
+                    mk20_index_certificate( $user_id, $course_id, $meta_value );
+                }
+            }
+        }
+    }
+}
+
+/**
  * Sube un certificado PDF generado localmente a la API externa.
  *
  * La URL de la API se configura mediante la constante MK20_EXT_UPLOAD_URL.
