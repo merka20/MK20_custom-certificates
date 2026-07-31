@@ -1,0 +1,11 @@
+{
+  "name": "MK20 Custom Certificates",
+  "slug": "mk20-custom-certificates",
+  "version": "1.3.0",
+  "requires": "5.0",
+  "tested": "7.0",
+  "requires_php": "7.4",
+  "download_url": "https://github.com/merka20/MK20_custom-certificates/releases/download/v1.3.0/mk20-custom-certificates.zip",
+  "fpdf": "1.9",
+  "changelog": "- Release inicial con pipeline de actualizacion automatica de FPDF."
+}

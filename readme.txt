@@ -3,7 +3,7 @@ Contributors: merka20
 Tags: certificates, learndash, buddypress, pdf, fpdf
 Requires at least: 5.0
 Tested up to: 7.0
-Stable tag: 1.1.0
+Stable tag: 1.3.0
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -23,6 +23,14 @@ Full configuration of coordinates, colors and font sizes from the admin settings
 3. Go to Settings → MK20 Certificates to configure
 
 == Changelog ==
+
+= 1.3.0 =
+* Subida automatica de certificados a API externa via POST multipart
+* Aviso de nueva version en el listado de plugins con actualizacion desde el panel
+* Panel admin global de certificados
+
+= 1.2.0 =
+* Integracion con API externa para certificados presenciales
 
 = 1.1.0 =
 * Improved coordinate and color management
