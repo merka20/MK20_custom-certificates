@@ -383,110 +383,80 @@ function mk20_store_rejected_pdf( $user_id, $external_id, $course_title, $reason
     update_option( 'mk20_rejected_certificates', $rejected, false );
 }
 
+/**
+ * Sincroniza los diplomas LaresFormación del usuario (formaciones presenciales).
+ *
+ * Flujo (documento_formacion.pdf): DNI del perfil BuddyBoss -> formacion_list
+ * -> generar_pdf por cada formación no importada -> importación con
+ * mk20_import_external_certificate(). El PDF se guarda tal cual lo envía
+ * Lares (su diseño). Ante cualquier fallo no rompe el perfil: lo registra
+ * en el audit log y/o en rechazados. Respeta el TTL configurable.
+ *
+ * @param int $user_id ID del usuario en WordPress.
+ */
 function mk20_sync_external_certificates( $user_id ) {
-    if ( empty( MK20_EXT_API_URL ) ) {
+    $user_id = absint( $user_id );
+    if ( 0 === $user_id || ! mk20_lares_is_configured() ) {
         return;
     }
+
+    $options = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
+    $ttl     = isset( $options['lares_sync_ttl'] ) ? max( 300, absint( $options['lares_sync_ttl'] ) ) : 21600;
 
     $transient_key = 'mk20_ext_sync_' . $user_id;
     if ( get_transient( $transient_key ) ) {
         return;
     }
 
-    mk20_api_audit_log( "INICIO user_id={$user_id}" );
+    mk20_api_audit_log( "LARES_SYNC_INICIO user_id={$user_id}" );
 
-    $options = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
-    $dni     = mk20_get_buddyboss_field( $user_id, $options['bb_field_dni'], '' );
-
-    if ( empty( $dni ) ) {
-        mk20_api_audit_log( "SALT user_id={$user_id} motivo=sin_dni" );
+    $dni = mk20_get_buddyboss_field( $user_id, $options['bb_field_dni'], '' );
+    if ( '' === $dni ) {
+        mk20_api_audit_log( "LARES_SYNC_SALT user_id={$user_id} motivo=sin_dni" );
         return;
     }
 
-    $api_url = add_query_arg( 'dni', urlencode( $dni ), MK20_EXT_API_URL );
-
-    $headers = array(
-        'Accept' => 'application/json',
-    );
-    if ( ! empty( MK20_EXT_API_TOKEN ) ) {
-        $headers['Authorization'] = 'Bearer ' . MK20_EXT_API_TOKEN;
-    }
-
-    $response = wp_remote_get( $api_url, array(
-        'timeout' => 30,
-        'headers' => $headers,
-    ) );
-
-    if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) {
-        $error_msg = is_wp_error( $response ) ? $response->get_error_message() : 'HTTP ' . wp_remote_retrieve_response_code( $response );
-        set_transient( $transient_key, 'error', HOUR_IN_SECONDS );
-        mk20_api_audit_log( "ERROR user_id={$user_id} dni={$dni} motivo={$error_msg}" );
-        return;
-    }
-
-    $body = wp_remote_retrieve_body( $response );
-    $data = json_decode( $body, true );
-
-    if ( ! is_array( $data ) || empty( $data['certificates'] ) ) {
-        set_transient( $transient_key, 'empty', 6 * HOUR_IN_SECONDS );
-        mk20_api_audit_log( "VACIO user_id={$user_id} dni={$dni}" );
+    $formaciones = mk20_lares_formacion_list( $dni );
+    if ( empty( $formaciones ) ) {
+        set_transient( $transient_key, 'empty', $ttl );
+        mk20_api_audit_log( "LARES_SYNC_VACIO user_id={$user_id} dni={$dni}" );
         return;
     }
 
     $imported = 0;
-    foreach ( $data['certificates'] as $cert ) {
-        $external_id  = isset( $cert['id'] ) ? sanitize_text_field( $cert['id'] ) : '';
-        $course_title = isset( $cert['title'] ) ? sanitize_text_field( $cert['title'] ) : '';
-        $issue_date   = isset( $cert['date'] ) ? sanitize_text_field( $cert['date'] ) : '';
-        $pdf_url      = isset( $cert['pdf_url'] ) ? esc_url_raw( $cert['pdf_url'] ) : '';
-
-        if ( empty( $external_id ) || empty( $pdf_url ) ) {
+    foreach ( $formaciones as $formacion ) {
+        $idformacion = $formacion['idFormacion'];
+        if ( 0 === $idformacion ) {
             continue;
         }
 
-        $hash = md5( $external_id );
+        $external_id = $dni . '_' . $idformacion;
+        $hash        = md5( $external_id );
         if ( get_user_meta( $user_id, '_mk20_ext_cert_path_' . $hash, true ) ) {
-            continue;
+            continue; // Ya importado.
         }
 
-        $pdf_response = wp_remote_get( $pdf_url, array(
-            'timeout' => 30,
-        ) );
-
-        if ( is_wp_error( $pdf_response ) || wp_remote_retrieve_response_code( $pdf_response ) !== 200 ) {
-            mk20_api_audit_log( "DOWNLOAD_ERROR user_id={$user_id} external_id={$external_id} motivo=error_http" );
-            continue;
+        $pdf = mk20_lares_generar_pdf( $dni, $idformacion, $user_id );
+        if ( false === $pdf ) {
+            continue; // Error ya registrado (audit log + rechazados).
         }
 
-        $content_type = wp_remote_retrieve_header( $pdf_response, 'content-type' );
-        if ( strpos( $content_type, 'application/pdf' ) === false ) {
-            mk20_api_audit_log( "DOWNLOAD_ERROR user_id={$user_id} external_id={$external_id} motivo=content_type_invalido valor={$content_type}" );
-            mk20_store_rejected_pdf( $user_id, $external_id, $course_title, 'content_type_invalido', $content_type );
-            continue;
+        if ( '' !== $formacion['titulo'] ) {
+            $titulo = $formacion['titulo'];
+        } else {
+            /* translators: %d: identificador de la formación en Lares. */
+            $titulo = sprintf( __( 'Formación Lares %d', 'mk20-custom-certificates' ), $idformacion );
         }
+        $titulo = apply_filters( 'mk20_ext_course_title', $titulo, $idformacion, $dni, $user_id );
 
-        $content_length = wp_remote_retrieve_header( $pdf_response, 'content-length' );
-        if ( ! empty( $content_length ) && intval( $content_length ) > 10 * MB_IN_BYTES ) {
-            mk20_api_audit_log( "DOWNLOAD_ERROR user_id={$user_id} external_id={$external_id} motivo=pdf_demasiado_grande bytes={$content_length}" );
-            mk20_store_rejected_pdf( $user_id, $external_id, $course_title, 'pdf_demasiado_grande', $content_length . ' bytes' );
-            continue;
-        }
-
-        $pdf_content = wp_remote_retrieve_body( $pdf_response );
-        if ( empty( $pdf_content ) ) {
-            mk20_api_audit_log( "DOWNLOAD_ERROR user_id={$user_id} external_id={$external_id} motivo=cuerpo_vacio" );
-            mk20_store_rejected_pdf( $user_id, $external_id, $course_title, 'cuerpo_vacio', '' );
-            continue;
-        }
-
-        $result = mk20_import_external_certificate( $pdf_content, $user_id, $external_id, $course_title, $issue_date );
+        $result = mk20_import_external_certificate( $pdf['contenido'], $user_id, $external_id, $titulo, $formacion['FechaDiploma'] );
         if ( $result ) {
             $imported++;
         }
     }
 
-    set_transient( $transient_key, 'done_' . $imported, 6 * HOUR_IN_SECONDS );
-    mk20_api_audit_log( "OK user_id={$user_id} dni={$dni} importados={$imported}" );
+    set_transient( $transient_key, 'done_' . $imported, $ttl );
+    mk20_api_audit_log( "LARES_SYNC_OK user_id={$user_id} dni={$dni} importados={$imported}" );
 }
 
 /**

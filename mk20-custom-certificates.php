@@ -527,7 +527,7 @@ function mk20_certificates_screen_content() {
         return;
     }
 
-    if ( $is_own_profile && ! empty( MK20_EXT_API_URL ) ) {
+    if ( $is_own_profile && function_exists( 'mk20_lares_is_configured' ) && mk20_lares_is_configured() ) {
         mk20_sync_external_certificates( $displayed_user_id );
     }
 
