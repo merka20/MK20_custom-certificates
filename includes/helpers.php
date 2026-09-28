@@ -721,3 +721,235 @@ function mk20_upload_certificate_to_external_api( $pdf_path, $user_id, $course_i
         mk20_api_audit_log( "UPLOAD_ERROR user_id={$user_id} course_id={$course_id} motivo=http_error http={$status_code}" );
     }
 }
+
+/**
+ * Cliente API LaresFormación (documento_formacion.pdf, apartado 2).
+ *
+ * Flujo: login (wpapilogin/index.php) -> token en transient ->
+ * peticiones POST JSON a wpapigetpdf/index.php con campo "request".
+ * Las credenciales viven SOLO en wp-config.php (ver mk20_lares_get_user/pass).
+ * Los PDFs externos se devuelven tal cual (diseño de Lares); este cliente
+ * no guarda nada ni remaqueta: solo habla con la API y valida respuestas.
+ */
+
+/**
+ * Obtiene un token válido de la API Lares (acción "login").
+ * Reutiliza el transient mk20_lares_token (12h) salvo $forzar.
+ *
+ * @param bool $forzar True para ignorar caché y pedir token nuevo.
+ * @return string|false Token o false si falla.
+ */
+function mk20_lares_login( $forzar = false ) {
+    if ( ! $forzar ) {
+        $cacheado = get_transient( 'mk20_lares_token' );
+        if ( is_string( $cacheado ) && '' !== $cacheado ) {
+            return $cacheado;
+        }
+    }
+
+    $base = mk20_lares_get_base();
+    $user = mk20_lares_get_user();
+    $pass = mk20_lares_get_pass();
+
+    if ( '' === $base || '' === $user || '' === $pass ) {
+        mk20_api_audit_log( 'LARES_LOGIN_SKIP motivo=sin_configuracion' );
+        return false;
+    }
+
+    $response = wp_remote_post( $base . '/wpapilogin/index.php', array(
+        'timeout' => 15,
+        'headers' => array( 'Content-Type' => 'application/json' ),
+        'body'    => wp_json_encode( array(
+            'request'  => 'login',
+            'user'     => $user,
+            'password' => $pass,
+        ) ),
+    ) );
+
+    if ( is_wp_error( $response ) ) {
+        mk20_api_audit_log( 'LARES_LOGIN_ERROR motivo=' . $response->get_error_message() );
+        return false;
+    }
+
+    $status = wp_remote_retrieve_response_code( $response );
+    if ( 200 !== $status ) {
+        // La documentación avisa: el 400 de login puede venir sin cuerpo JSON.
+        mk20_api_audit_log( 'LARES_LOGIN_ERROR motivo=http_error http=' . $status );
+        return false;
+    }
+
+    $data = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( ! is_array( $data ) || empty( $data['token'] ) || ! is_string( $data['token'] ) ) {
+        mk20_api_audit_log( 'LARES_LOGIN_ERROR motivo=respuesta_invalida' );
+        return false;
+    }
+
+    set_transient( 'mk20_lares_token', $data['token'], 12 * HOUR_IN_SECONDS );
+    mk20_api_audit_log( 'LARES_LOGIN_OK' );
+
+    return $data['token'];
+}
+
+/**
+ * Envía una petición POST JSON a wpapigetpdf/index.php.
+ * Uso interno: preferir mk20_lares_request() (gestiona el token).
+ *
+ * @param string $url    URL completa del endpoint.
+ * @param string $accion Valor del campo "request".
+ * @param string $token  Token obtenido en el login.
+ * @param array  $campos Campos adicionales del cuerpo JSON.
+ * @return array|false Respuesta decodificada o false si falla.
+ */
+function mk20_lares_post( $url, $accion, $token, $campos ) {
+    $response = wp_remote_post( $url, array(
+        'timeout' => 30,
+        'headers' => array( 'Content-Type' => 'application/json' ),
+        'body'    => wp_json_encode( array_merge( array(
+            'request' => $accion,
+            'token'   => $token,
+        ), $campos ) ),
+    ) );
+
+    if ( is_wp_error( $response ) ) {
+        mk20_api_audit_log( "LARES_API_ERROR accion={$accion} motivo=" . $response->get_error_message() );
+        return false;
+    }
+
+    $status = wp_remote_retrieve_response_code( $response );
+    $data   = json_decode( wp_remote_retrieve_body( $response ), true );
+
+    if ( 200 !== $status ) {
+        $mensaje = ( is_array( $data ) && isset( $data['message'] ) && is_string( $data['message'] ) ) ? sanitize_text_field( $data['message'] ) : 'sin_mensaje';
+        mk20_api_audit_log( "LARES_API_ERROR accion={$accion} http={$status} mensaje={$mensaje}" );
+        return false;
+    }
+
+    if ( ! is_array( $data ) ) {
+        mk20_api_audit_log( "LARES_API_ERROR accion={$accion} motivo=respuesta_no_json" );
+        return false;
+    }
+
+    return $data;
+}
+
+/**
+ * Petición genérica a la API Lares con gestión automática de token.
+ * Ante un fallo, hace un re-login y un único reintento (token caducado).
+ *
+ * @param string $accion Valor del campo "request" (formacion_list, generar_pdf).
+ * @param array  $campos Campos adicionales del cuerpo JSON.
+ * @return array|false Respuesta decodificada o false si falla.
+ */
+function mk20_lares_request( $accion, $campos = array() ) {
+    $base = mk20_lares_get_base();
+    if ( '' === $base ) {
+        return false;
+    }
+
+    $token = mk20_lares_login();
+    if ( false === $token ) {
+        return false;
+    }
+
+    $resultado = mk20_lares_post( $base . '/wpapigetpdf/index.php', $accion, $token, $campos );
+    if ( false !== $resultado ) {
+        return $resultado;
+    }
+
+    // Posible token caducado: un re-login y un único reintento.
+    delete_transient( 'mk20_lares_token' );
+    $token = mk20_lares_login( true );
+    if ( false === $token ) {
+        return false;
+    }
+
+    return mk20_lares_post( $base . '/wpapigetpdf/index.php', $accion, $token, $campos );
+}
+
+/**
+ * Lista las formaciones/diplomas de un alumno por su DNI (acción "formacion_list").
+ * Nunca rompe la página: ante cualquier fallo devuelve array vacío y lo registra.
+ *
+ * @param string $dni DNI/NIF del alumno.
+ * @return array Lista de arrays con idFormacion, idAlumno, FechaDiploma y titulo
+ *               (titulo queda vacío hasta que Lares añada el campo).
+ */
+function mk20_lares_formacion_list( $dni ) {
+    $dni = is_string( $dni ) ? trim( $dni ) : '';
+    if ( '' === $dni ) {
+        return array();
+    }
+
+    $data = mk20_lares_request( 'formacion_list', array( 'dni' => $dni ) );
+    if ( ! is_array( $data ) || ! isset( $data['datos'] ) || ! is_array( $data['datos'] ) ) {
+        return array();
+    }
+
+    $lista = array();
+    foreach ( $data['datos'] as $item ) {
+        if ( ! is_array( $item ) || ! isset( $item['idFormacion'] ) ) {
+            continue;
+        }
+        $lista[] = array(
+            'idFormacion'  => absint( $item['idFormacion'] ),
+            'idAlumno'     => isset( $item['idAlumno'] ) ? absint( $item['idAlumno'] ) : 0,
+            'FechaDiploma' => ( isset( $item['FechaDiploma'] ) && is_string( $item['FechaDiploma'] ) ) ? sanitize_text_field( $item['FechaDiploma'] ) : '',
+            'titulo'       => ( isset( $item['titulo'] ) && is_string( $item['titulo'] ) ) ? sanitize_text_field( $item['titulo'] ) : '',
+        );
+    }
+
+    return $lista;
+}
+
+/**
+ * Genera el diploma de una formación y lo devuelve decodificado (acción "generar_pdf").
+ * El PDF se devuelve tal cual lo envía Lares (su diseño); no se guarda ni se modifica aquí.
+ *
+ * @param string $dni         DNI/NIF del alumno.
+ * @param int    $idformacion Identificador de la formación.
+ * @param int    $user_id     ID de WP para el registro de rechazados (0 si se desconoce).
+ * @return array|false Array con 'nombre' y 'contenido' (binario PDF), o false si falla.
+ */
+function mk20_lares_generar_pdf( $dni, $idformacion, $user_id = 0 ) {
+    $dni         = is_string( $dni ) ? trim( $dni ) : '';
+    $idformacion = absint( $idformacion );
+    if ( '' === $dni || 0 === $idformacion ) {
+        return false;
+    }
+
+    $external_id = $dni . '_' . $idformacion;
+    $titulo_tmp  = 'Formación Lares ' . $idformacion;
+
+    $data = mk20_lares_request( 'generar_pdf', array(
+        'dni'         => $dni,
+        'idformacion' => $idformacion,
+    ) );
+    if ( ! is_array( $data ) || empty( $data['documento'] ) || ! is_string( $data['documento'] ) ) {
+        mk20_api_audit_log( "LARES_PDF_ERROR dni={$dni} idformacion={$idformacion} motivo=respuesta_invalida" );
+        mk20_store_rejected_pdf( $user_id, $external_id, $titulo_tmp, 'respuesta_invalida', '' );
+        return false;
+    }
+
+    $contenido = base64_decode( $data['documento'], true );
+    if ( false === $contenido || substr( $contenido, 0, 4 ) !== '%PDF' ) {
+        mk20_api_audit_log( "LARES_PDF_ERROR dni={$dni} idformacion={$idformacion} motivo=no_es_pdf" );
+        mk20_store_rejected_pdf( $user_id, $external_id, $titulo_tmp, 'no_es_pdf', '' );
+        return false;
+    }
+
+    if ( strlen( $contenido ) > 10 * MB_IN_BYTES ) {
+        mk20_api_audit_log( "LARES_PDF_ERROR dni={$dni} idformacion={$idformacion} motivo=pdf_demasiado_grande bytes=" . strlen( $contenido ) );
+        mk20_store_rejected_pdf( $user_id, $external_id, $titulo_tmp, 'pdf_demasiado_grande', strlen( $contenido ) . ' bytes' );
+        return false;
+    }
+
+    $nombre = ( isset( $data['nombre_documento'] ) && is_string( $data['nombre_documento'] ) ) ? sanitize_file_name( $data['nombre_documento'] ) : '';
+    if ( '' === $nombre ) {
+        $nombre = sprintf( 'diploma_%s_%d.pdf', sanitize_title( $dni ), $idformacion );
+    }
+
+    return array(
+        'nombre'    => $nombre,
+        'contenido' => $contenido,
+    );
+}
