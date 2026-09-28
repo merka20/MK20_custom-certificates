@@ -172,7 +172,76 @@ function mk20_get_default_settings() {
 
         // 8. Conservación de datos al desinstalar
         'keep_data_on_uninstall' => 1,
+
+        // 9. Integración API LaresFormación (ver documento_formacion.pdf).
+        // El usuario/password SOLO viven en wp-config.php (constantes
+        // MK20_LARES_API_USER/PASS) y nunca se guardan en la BD.
+        'lares_enabled'  => 0,
+        'lares_api_base' => '',
+        'lares_sync_ttl' => 21600, // 6 horas en segundos.
     ];
+}
+
+/**
+ * Obtiene la URL base de la API LaresFormación (sin barra final).
+ *
+ * Prioridad: constante MK20_LARES_API_BASE (wp-config.php) > ajuste
+ * 'lares_api_base' > cadena vacía (integración desactivada).
+ *
+ * @return string URL base o cadena vacía si no está configurada.
+ */
+function mk20_lares_get_base() {
+    if ( defined( 'MK20_LARES_API_BASE' ) && '' !== trim( MK20_LARES_API_BASE ) && 'https://formacion.lares.example' !== untrailingslashit( MK20_LARES_API_BASE ) ) {
+        return untrailingslashit( MK20_LARES_API_BASE );
+    }
+
+    $options = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
+    if ( ! empty( $options['lares_api_base'] ) ) {
+        return untrailingslashit( $options['lares_api_base'] );
+    }
+
+    return '';
+}
+
+/**
+ * Obtiene el usuario de la API LaresFormación (solo constante, nunca BD).
+ *
+ * @return string Usuario o cadena vacía si no está configurado.
+ */
+function mk20_lares_get_user() {
+    if ( defined( 'MK20_LARES_API_USER' ) && 'usuario_api' !== MK20_LARES_API_USER ) {
+        return MK20_LARES_API_USER;
+    }
+
+    return '';
+}
+
+/**
+ * Obtiene la contraseña de la API LaresFormación (solo constante, nunca BD).
+ *
+ * @return string Contraseña o cadena vacía si no está configurada.
+ */
+function mk20_lares_get_pass() {
+    if ( defined( 'MK20_LARES_API_PASS' ) && '' !== MK20_LARES_API_PASS ) {
+        return MK20_LARES_API_PASS;
+    }
+
+    return '';
+}
+
+/**
+ * Indica si la integración LaresFormación está activada y configurada.
+ *
+ * @return bool True si está activada en ajustes y hay base + credenciales.
+ */
+function mk20_lares_is_configured() {
+    $options = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
+
+    if ( empty( $options['lares_enabled'] ) ) {
+        return false;
+    }
+
+    return '' !== mk20_lares_get_base() && '' !== mk20_lares_get_user() && '' !== mk20_lares_get_pass();
 }
 
 /**

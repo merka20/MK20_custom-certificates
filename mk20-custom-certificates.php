@@ -35,6 +35,27 @@ if ( ! defined( 'MK20_EXT_UPLOAD_URL' ) ) {
 }
 
 /**
+ * Integración API LaresFormación (documento_formacion.pdf).
+ *
+ * Las credenciales (USER/PASS) deben definirse en wp-config.php y NUNCA
+ * versionarse en el repo. Valores de ejemplo para planificar; sustituir
+ * por los reales facilitados por Lares:
+ *
+ * define( 'MK20_LARES_API_BASE', 'https://formacion.lares.example' ); // Sin barra final.
+ * define( 'MK20_LARES_API_USER', 'usuario_api' );
+ * define( 'MK20_LARES_API_PASS', 'cambia-esta-clave' );
+ */
+if ( ! defined( 'MK20_LARES_API_BASE' ) ) {
+    define( 'MK20_LARES_API_BASE', 'https://formacion.lares.example' );
+}
+if ( ! defined( 'MK20_LARES_API_USER' ) ) {
+    define( 'MK20_LARES_API_USER', 'usuario_api' );
+}
+if ( ! defined( 'MK20_LARES_API_PASS' ) ) {
+    define( 'MK20_LARES_API_PASS', '' );
+}
+
+/**
  * Obtiene la version instalada de FPDF desde el archivo.
  */
 function mk20_get_fpdf_version() {

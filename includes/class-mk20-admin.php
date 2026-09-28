@@ -135,6 +135,10 @@ class MK20_Admin {
         }
         $output['fallback_course_contents'] = isset( $input['fallback_course_contents'] ) ? sanitize_textarea_field( $input['fallback_course_contents'] ) : $defaults['fallback_course_contents'];
 
+        // Integración API LaresFormación (credenciales solo en wp-config.php, nunca en BD)
+        $output['lares_api_base'] = isset( $input['lares_api_base'] ) ? esc_url_raw( $input['lares_api_base'] ) : $defaults['lares_api_base'];
+        $output['lares_sync_ttl'] = isset( $input['lares_sync_ttl'] ) ? max( 300, absint( $input['lares_sync_ttl'] ) ) : $defaults['lares_sync_ttl'];
+
         // Coordenadas X / Y (float)
         $float_fields = [ 'name_x', 'name_y', 'company_line_x', 'company_line_y', 'front_course_x', 'front_course_y', 'details_y', 'code_x', 'start_date_x', 'end_date_x', 'duration_y', 'duration_x', 'modality_x', 'date_x', 'date_y', 'contents_x', 'contents_y' ];
         foreach ( $float_fields as $f ) {
@@ -154,7 +158,7 @@ class MK20_Admin {
         }
 
         // Checkboxes (centrar) — 1 si está marcado, 0 si no
-        $cb_fields = [ 'name_center', 'company_line_center', 'front_course_center', 'date_center', 'contents_center', 'keep_data_on_uninstall' ];
+        $cb_fields = [ 'name_center', 'company_line_center', 'front_course_center', 'date_center', 'contents_center', 'keep_data_on_uninstall', 'lares_enabled' ];
         foreach ( $cb_fields as $f ) {
             $output[ $f ] = isset( $input[ $f ] ) ? 1 : 0;
         }
@@ -655,6 +659,33 @@ class MK20_Admin {
                                         <input type="checkbox" name="mk20_cert_settings[contents_center]" value="1" <?php checked( ! empty( $settings['contents_center'] ) ); ?>>
                                         <?php esc_html_e( 'Centrar', 'mk20-custom-certificates' ); ?>
                                     </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tarjeta de Integración API LaresFormación -->
+                        <div class="mk20-card">
+                            <h2><?php esc_html_e( '11. Integración API LaresFormación', 'mk20-custom-certificates' ); ?></h2>
+                            <p class="description"><?php esc_html_e( 'Sincroniza los diplomas de formación presencial desde la plataforma externa usando el DNI del perfil de BuddyBoss. El usuario y la contraseña de la API deben definirse en wp-config.php (constantes MK20_LARES_API_USER y MK20_LARES_API_PASS) y nunca se guardan en la base de datos.', 'mk20-custom-certificates' ); ?></p>
+                            <?php if ( mk20_lares_is_configured() ) : ?>
+                                <p style="color:#059669; font-weight:600;"><?php esc_html_e( '✓ Integración configurada y activada.', 'mk20-custom-certificates' ); ?></p>
+                            <?php else : ?>
+                                <p style="color:#d97706; font-weight:600;"><?php esc_html_e( '⚠ Integración pendiente de configurar (URL base y credenciales reales en wp-config.php).', 'mk20-custom-certificates' ); ?></p>
+                            <?php endif; ?>
+                            <div class="mk20-field-grid">
+                                <div class="mk20-field-group">
+                                    <label class="align-checkbox-label" style="margin-top:0;">
+                                        <input type="checkbox" name="mk20_cert_settings[lares_enabled]" value="1" <?php checked( ! empty( $settings['lares_enabled'] ) ); ?>>
+                                        <?php esc_html_e( 'Activar sincronización', 'mk20-custom-certificates' ); ?>
+                                    </label>
+                                </div>
+                                <div class="mk20-field-group">
+                                    <label><?php esc_html_e( 'URL base de la API (opcional si está en wp-config.php)', 'mk20-custom-certificates' ); ?></label>
+                                    <input type="url" name="mk20_cert_settings[lares_api_base]" value="<?php echo esc_attr( $settings['lares_api_base'] ); ?>" class="regular-text" placeholder="https://...">
+                                </div>
+                                <div class="mk20-field-group">
+                                    <label><?php esc_html_e( 'Caché de sincronización (segundos, mín. 300)', 'mk20-custom-certificates' ); ?></label>
+                                    <input type="number" min="300" step="60" name="mk20_cert_settings[lares_sync_ttl]" value="<?php echo esc_attr( $settings['lares_sync_ttl'] ); ?>" class="regular-text">
                                 </div>
                             </div>
                         </div>
