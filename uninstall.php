@@ -14,6 +14,8 @@ delete_option( 'mk20_cert_settings' );
 delete_option( 'mk20_rejected_certificates' );
 delete_option( 'mk20_cert_index_db_version' );
 
+wp_clear_scheduled_hook( 'mk20_sync_user_certificates' );
+
 $mk20_users = get_users( array(
     'fields' => 'ID',
 ) );
@@ -21,10 +23,12 @@ $mk20_users = get_users( array(
 foreach ( $mk20_users as $mk20_user_id ) {
     $mk20_user_meta = get_user_meta( $mk20_user_id );
     foreach ( array_keys( $mk20_user_meta ) as $mk20_meta_key ) {
-        if ( 0 === strpos( $mk20_meta_key, '_mk20_cert_' ) || 0 === strpos( $mk20_meta_key, '_mk20_ext_cert_' ) ) {
+        if ( 0 === strpos( $mk20_meta_key, '_mk20_cert_' ) || 0 === strpos( $mk20_meta_key, '_mk20_ext_cert_' ) || '_mk20_ext_sync_state' === $mk20_meta_key ) {
             delete_user_meta( $mk20_user_id, $mk20_meta_key );
         }
     }
+
+    delete_option( 'mk20_sync_lock_' . absint( $mk20_user_id ) );
 }
 
 delete_transient( 'mk20_fpdf_update_check' );

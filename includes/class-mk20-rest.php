@@ -270,6 +270,72 @@ class MK20_REST {
                 ],
             ],
         ] );
+
+        register_rest_route( 'mk20/v1', '/sync-certificates', [
+            'methods'             => 'POST',
+            'callback'            => [ $this, 'sync_certificates' ],
+            'permission_callback' => [ $this, 'can_sync_certificates' ],
+            'args'                => [
+                'user_id' => [
+                    'required'          => false,
+                    'sanitize_callback' => 'absint',
+                ],
+            ],
+        ] );
+    }
+
+    /**
+     * Comprueba que quien solicita el lote puede operar sobre el usuario objetivo.
+     *
+     * @param WP_REST_Request $request Petición.
+     * @return bool|WP_Error
+     */
+    public function can_sync_certificates( $request ) {
+        if ( ! is_user_logged_in() ) {
+            return new WP_Error(
+                'mk20_no_session',
+                __( 'Debes iniciar sesión para sincronizar tus certificados.', 'mk20-custom-certificates' ),
+                [ 'status' => 401 ]
+            );
+        }
+
+        $target = absint( $request->get_param( 'user_id' ) );
+        if ( 0 === $target ) {
+            $target = get_current_user_id();
+        }
+
+        if ( $target !== get_current_user_id() && ! current_user_can( 'edit_user', $target ) ) {
+            return new WP_Error(
+                'mk20_forbidden',
+                __( 'No puedes sincronizar los certificados de este usuario.', 'mk20-custom-certificates' ),
+                [ 'status' => 403 ]
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * Procesa un lote acotado de sincronización de certificados externos.
+     *
+     * @param WP_REST_Request $request Petición.
+     * @return WP_REST_Response
+     */
+    public function sync_certificates( $request ) {
+        $target = absint( $request->get_param( 'user_id' ) );
+        if ( 0 === $target ) {
+            $target = get_current_user_id();
+        }
+
+        $result = mk20_lares_sync_batch( $target, 20, 1 );
+
+        return new WP_REST_Response( [
+            'done'     => ! empty( $result['done'] ),
+            'busy'     => ! empty( $result['busy'] ),
+            'imported' => absint( $result['imported'] ),
+            'pending'  => absint( $result['pending'] ),
+            'total'    => absint( $result['total'] ),
+        ], 200 );
     }
 
     public function verify_certificate( $request ) {

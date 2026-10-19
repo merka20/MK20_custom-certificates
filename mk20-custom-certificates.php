@@ -209,6 +209,8 @@ function mk20_custom_certificates_init() {
 
     add_action( 'learndash_course_completed', 'mk20_handle_course_completion', 10, 1 );
 
+    add_action( 'mk20_sync_user_certificates', 'mk20_sync_user_event_handler', 10, 1 );
+
     add_action( 'admin_post_mk20_download_cert', 'mk20_download_certificate' );
     add_action( 'admin_post_nopriv_mk20_download_cert', 'mk20_download_certificate' );
 
@@ -528,7 +530,16 @@ function mk20_certificates_screen_content() {
     }
 
     if ( $is_own_profile && function_exists( 'mk20_lares_is_configured' ) && mk20_lares_is_configured() ) {
-        mk20_sync_external_certificates( $displayed_user_id );
+        mk20_enqueue_cert_sync_assets( $displayed_user_id );
+        mk20_lares_schedule_sync( $displayed_user_id );
+
+        if ( mk20_lares_sync_needed( $displayed_user_id ) ) {
+            echo '<div id="mk20-cert-sync-status" class="mk20-cert-sync" data-user="' . esc_attr( (string) $displayed_user_id ) . '">';
+            echo '<span class="mk20-cert-sync__spinner" aria-hidden="true"></span>';
+            echo '<p class="mk20-cert-sync__text">' . esc_html__( 'Buscando nuevos certificados…', 'mk20-custom-certificates' ) . '</p>';
+            echo '<span class="mk20-cert-sync__bar"><span></span></span>';
+            echo '</div>';
+        }
     }
 
     $cache_key = 'mk20_all_cert_paths_' . $displayed_user_id;
@@ -617,7 +628,122 @@ function mk20_certificates_screen_content() {
             background: #059669 !important;
             color: #fff !important;
         }
+        .mk20-cert-sync {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0 0 16px;
+            padding: 12px 14px;
+            border-radius: 8px;
+            background: #f8fafc;
+            color: #475569;
+            font-size: 14px;
+        }
+        .mk20-cert-sync.is-hidden {
+            display: none;
+        }
+        .mk20-cert-sync p {
+            margin: 0;
+        }
+        .mk20-cert-sync__spinner {
+            flex: 0 0 auto;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #cbd5e1;
+            border-top-color: #10b981;
+            border-radius: 50%;
+            animation: mk20-cert-spin 0.8s linear infinite;
+        }
+        .mk20-cert-sync__bar {
+            flex: 1 1 auto;
+            height: 6px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            overflow: hidden;
+        }
+        .mk20-cert-sync__bar span {
+            display: block;
+            height: 100%;
+            width: 10%;
+            border-radius: 999px;
+            background: #10b981;
+            transition: width 0.3s ease;
+        }
+        @keyframes mk20-cert-spin {
+            to { transform: rotate(360deg); }
+        }
     </style>';
+}
+
+/**
+ * Encola el script que sincroniza los certificados externos por lotes.
+ *
+ * @param int $user_id Usuario cuya ficha está abierta.
+ */
+function mk20_enqueue_cert_sync_assets( $user_id ) {
+    $handle = 'mk20-cert-sync';
+    $file   = MK20_CERT_PATH . 'assets/js/mk20-cert-sync.js';
+    $ver    = file_exists( $file ) ? (string) filemtime( $file ) : '1.0.0';
+
+    if ( ! wp_script_is( $handle, 'registered' ) ) {
+        wp_register_script( $handle, MK20_CERT_URL . 'assets/js/mk20-cert-sync.js', array(), $ver, true );
+    }
+
+    wp_enqueue_script( $handle );
+
+    wp_localize_script(
+        $handle,
+        'mk20CertSync',
+        array(
+            'endpoint' => esc_url_raw( rest_url( 'mk20/v1/sync-certificates' ) ),
+            'nonce'    => wp_create_nonce( 'wp_rest' ),
+            'userId'   => absint( $user_id ),
+            'strings'  => array(
+                'syncing' => __( 'Buscando nuevos certificados…', 'mk20-custom-certificates' ),
+                'ready'   => __( 'Certificados actualizados.', 'mk20-custom-certificates' ),
+                'reload'  => __( 'Recargando…', 'mk20-custom-certificates' ),
+                'error'   => __( 'No se pudieron comprobar los certificados. Se reintentará automáticamente.', 'mk20-custom-certificates' ),
+            ),
+        )
+    );
+}
+
+/**
+ * Programa el evento cron que continúa la sincronización en segundo plano.
+ *
+ * @param int $user_id ID del usuario.
+ */
+function mk20_lares_schedule_sync( $user_id ) {
+    $user_id = absint( $user_id );
+
+    if ( ! $user_id || ! mk20_lares_sync_needed( $user_id ) ) {
+        return;
+    }
+
+    if ( wp_next_scheduled( 'mk20_sync_user_certificates', array( $user_id ) ) ) {
+        return;
+    }
+
+    wp_schedule_single_event( time() + 60, 'mk20_sync_user_certificates', array( $user_id ) );
+}
+
+/**
+ * Procesa un lote en segundo plano y reprograma si queda trabajo pendiente.
+ *
+ * @param int $user_id ID del usuario.
+ */
+function mk20_sync_user_event_handler( $user_id ) {
+    $user_id = absint( $user_id );
+
+    if ( ! $user_id || ! mk20_lares_sync_needed( $user_id ) ) {
+        return;
+    }
+
+    mk20_lares_sync_batch( $user_id, 20, 1 );
+
+    if ( mk20_lares_sync_needed( $user_id ) && ! wp_next_scheduled( 'mk20_sync_user_certificates', array( $user_id ) ) ) {
+        wp_schedule_single_event( time() + 60, 'mk20_sync_user_certificates', array( $user_id ) );
+    }
 }
 
 add_action( 'admin_post_mk20_delete_cert', 'mk20_handle_delete_cert' );

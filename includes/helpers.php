@@ -394,80 +394,402 @@ function mk20_store_rejected_pdf( $user_id, $external_id, $course_title, $reason
  * en el audit log y/o en rechazados. Respeta el TTL configurable.
  *
  * @param int $user_id ID del usuario en WordPress.
+ * @param int $budget  Segundos máximos a dedicar a la sincronización.
+ * @return array Estado devuelto por el último lote.
  */
-function mk20_sync_external_certificates( $user_id ) {
-    $user_id = absint( $user_id );
+function mk20_sync_external_certificates( $user_id, $budget = 25 ) {
+    $user_id  = absint( $user_id );
+    $deadline = microtime( true ) + max( 5, absint( $budget ) );
+    $result   = array( 'done' => true, 'busy' => false, 'imported' => 0, 'pending' => 0, 'total' => 0 );
+
     if ( 0 === $user_id || ! mk20_lares_is_configured() ) {
+        return $result;
+    }
+
+    do {
+        $result = mk20_lares_sync_batch( $user_id, 20, 1 );
+        if ( ! empty( $result['busy'] ) ) {
+            break;
+        }
+    } while ( empty( $result['done'] ) && microtime( true ) < $deadline );
+
+    return $result;
+}
+
+/**
+ * Devuelve los valores por defecto del estado de sincronización externa.
+ *
+ * @return array
+ */
+function mk20_sync_state_defaults() {
+    return array(
+        'pending'  => array(),
+        'deferred' => array(),
+        'total'    => 0,
+        'list_at'  => 0,
+        'attempts' => array(),
+        'errors'   => array(),
+        'avg_ms'   => 12000,
+        'dni'      => '',
+    );
+}
+
+/**
+ * Lee el estado de sincronización externa de un usuario.
+ *
+ * @param int $user_id ID del usuario.
+ * @return array
+ */
+function mk20_sync_state_get( $user_id ) {
+    $state = get_user_meta( absint( $user_id ), '_mk20_ext_sync_state', true );
+
+    if ( ! is_array( $state ) ) {
+        return mk20_sync_state_defaults();
+    }
+
+    $state = wp_parse_args( $state, mk20_sync_state_defaults() );
+
+    $state['pending']  = is_array( $state['pending'] ) ? array_values( $state['pending'] ) : array();
+    $state['deferred'] = is_array( $state['deferred'] ) ? array_values( $state['deferred'] ) : array();
+    $state['attempts'] = is_array( $state['attempts'] ) ? $state['attempts'] : array();
+    $state['errors']   = is_array( $state['errors'] ) ? $state['errors'] : array();
+
+    return $state;
+}
+
+/**
+ * Guarda el estado de sincronización externa de un usuario.
+ *
+ * @param int   $user_id ID del usuario.
+ * @param array $state   Estado a persistir.
+ */
+function mk20_sync_state_save( $user_id, $state ) {
+    update_user_meta( absint( $user_id ), '_mk20_ext_sync_state', $state );
+}
+
+/**
+ * Indica si hay ítems diferidos cuyo backoff ya venció (listos para reintento).
+ *
+ * @param array $state Estado de sincronización.
+ * @return bool
+ */
+function mk20_sync_state_has_due_deferred( $state ) {
+    $now = time();
+
+    foreach ( (array) $state['deferred'] as $deferred ) {
+        if ( isset( $deferred['next_try'] ) && (int) $deferred['next_try'] <= $now ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Adquiere el bloqueo de sincronización de un usuario (evita procesos
+ * concurrentes en perfil, REST y cron). Caduca a los 5 minutos.
+ *
+ * @param int $user_id ID del usuario.
+ * @return bool True si se obtuvo el bloqueo.
+ */
+function mk20_sync_lock_acquire( $user_id ) {
+    $user_id = absint( $user_id );
+    $key     = 'mk20_sync_lock_' . $user_id;
+    $now     = time();
+
+    if ( add_option( $key, $now, '', 'no' ) ) {
+        return true;
+    }
+
+    $current = (int) get_option( $key, 0 );
+    if ( $current && ( $now - $current ) > 300 ) {
+        update_option( $key, $now, false );
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Libera el bloqueo de sincronización de un usuario.
+ *
+ * @param int $user_id ID del usuario.
+ */
+function mk20_sync_lock_release( $user_id ) {
+    delete_option( 'mk20_sync_lock_' . absint( $user_id ) );
+}
+
+/**
+ * Indica si un certificado externo ya está importado y su archivo existe.
+ *
+ * @param int    $user_id ID del usuario.
+ * @param string $hash    Hash del certificado externo.
+ * @return bool
+ */
+function mk20_ext_cert_exists( $user_id, $hash ) {
+    $path = get_user_meta( absint( $user_id ), '_mk20_ext_cert_path_' . $hash, true );
+
+    return ( $path && file_exists( $path ) );
+}
+
+/**
+ * Indica si el usuario tiene trabajo de sincronización pendiente o la caché
+ * está caducada. No realiza ninguna llamada de red.
+ *
+ * @param int $user_id ID del usuario.
+ * @return bool
+ */
+function mk20_lares_sync_needed( $user_id ) {
+    if ( ! mk20_lares_is_configured() ) {
+        return false;
+    }
+
+    $options = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
+    $ttl     = isset( $options['lares_sync_ttl'] ) ? max( 300, absint( $options['lares_sync_ttl'] ) ) : 21600;
+    $state   = mk20_sync_state_get( $user_id );
+
+    if ( ! empty( $state['pending'] ) || mk20_sync_state_has_due_deferred( $state ) ) {
+        return true;
+    }
+
+    if ( ! empty( $options['lares_force_sync'] ) ) {
+        return true;
+    }
+
+    return ( time() - (int) $state['list_at'] ) >= $ttl;
+}
+
+/**
+ * Prepara el estado: reintroduce los diferidos con backoff vencido y, si
+ * corresponde, refresca la lista de formaciones desde Lares.
+ *
+ * @param int   $user_id ID del usuario.
+ * @param array $state   Estado actual.
+ * @param int   $ttl     TTL de caché en segundos.
+ * @param array $options Ajustes del plugin.
+ * @return array Estado preparado.
+ */
+function mk20_lares_sync_prepare( $user_id, $state, $ttl, $options ) {
+    $now = time();
+
+    // Reintroducir los diferidos cuyo backoff ya venció; descartar tras 3 intentos.
+    $still_deferred = array();
+    foreach ( $state['deferred'] as $deferred ) {
+        if ( ! isset( $deferred['item'], $deferred['next_try'], $deferred['attempts'] ) ) {
+            continue;
+        }
+
+        if ( (int) $deferred['attempts'] >= 3 ) {
+            continue;
+        }
+
+        if ( (int) $deferred['next_try'] <= $now ) {
+            $state['pending'][] = $deferred['item'];
+        } else {
+            $still_deferred[] = $deferred;
+        }
+    }
+    $state['deferred'] = $still_deferred;
+
+    // Si ya hay trabajo pendiente, no se vuelve a consultar la lista.
+    if ( ! empty( $state['pending'] ) ) {
+        return $state;
+    }
+
+    $force = ! empty( $options['lares_force_sync'] );
+    $stale = ( $now - (int) $state['list_at'] ) >= $ttl;
+
+    if ( ! $force && ! $stale ) {
+        return $state;
+    }
+
+    $dni = mk20_get_buddyboss_field( $user_id, $options['bb_field_dni'], '' );
+    $state['list_at'] = $now;
+
+    if ( '' === $dni ) {
+        mk20_api_audit_log( "LARES_SYNC_SALT user_id={$user_id} motivo=sin_dni" );
+        return $state;
+    }
+
+    $state['dni'] = $dni;
+
+    $formaciones = mk20_lares_formacion_list( $dni );
+    $pending     = array();
+
+    foreach ( $formaciones as $formacion ) {
+        $idformacion = absint( $formacion['idFormacion'] );
+
+        // Sin diploma emitido en Lares: no generar ni importar hasta que tenga fecha.
+        if ( 0 === $idformacion || '' === $formacion['FechaDiploma'] ) {
+            continue;
+        }
+
+        $external_id = $dni . '_' . $idformacion;
+        $hash        = md5( $external_id );
+
+        if ( mk20_ext_cert_exists( $user_id, $hash ) ) {
+            continue; // Ya importado y el archivo sigue en disco.
+        }
+
+        $pending[] = array(
+            'idFormacion'  => $idformacion,
+            'titulo'       => isset( $formacion['titulo'] ) ? $formacion['titulo'] : '',
+            'FechaDiploma' => $formacion['FechaDiploma'],
+            'hash'         => $hash,
+            'external_id'  => $external_id,
+        );
+    }
+
+    $state['pending'] = $pending;
+    $state['total']   = count( $pending );
+
+    return $state;
+}
+
+/**
+ * Marca un ítem fallido y lo difiere con backoff (1h, 6h). Tras 3 intentos
+ * se descarta (el motivo ya queda en el registro de rechazados).
+ *
+ * @param array  $state  Estado (por referencia).
+ * @param array  $item   Ítem fallido.
+ * @param string $reason Motivo del fallo.
+ */
+function mk20_lares_mark_failure( &$state, $item, $reason ) {
+    $idformacion = absint( $item['idFormacion'] );
+    $attempts    = isset( $state['attempts'][ $idformacion ] ) ? (int) $state['attempts'][ $idformacion ] + 1 : 1;
+
+    $state['attempts'][ $idformacion ] = $attempts;
+    $state['errors'][ $idformacion ]   = $reason;
+
+    if ( $attempts >= 3 ) {
         return;
+    }
+
+    $delays = array( 1 => HOUR_IN_SECONDS, 2 => 6 * HOUR_IN_SECONDS );
+    $delay  = isset( $delays[ $attempts ] ) ? $delays[ $attempts ] : DAY_IN_SECONDS;
+
+    $state['deferred'][] = array(
+        'item'     => $item,
+        'attempts' => $attempts,
+        'next_try' => time() + $delay,
+    );
+}
+
+/**
+ * Genera e importa un único certificado pendiente.
+ *
+ * @param int    $user_id ID del usuario.
+ * @param array  $item    Ítem pendiente.
+ * @param string $dni     DNI/NIF del alumno.
+ * @param array  $state   Estado (por referencia, para anotar fallos).
+ * @return bool True si se importó correctamente.
+ */
+function mk20_lares_import_pending_item( $user_id, $item, $dni, &$state ) {
+    $idformacion = absint( $item['idFormacion'] );
+    $external_id = $item['external_id'];
+
+    if ( '' !== $item['titulo'] ) {
+        $titulo = $item['titulo'];
+    } else {
+        /* translators: %d: identificador de la formación en Lares. */
+        $titulo = sprintf( __( 'Formación Lares %d', 'mk20-custom-certificates' ), $idformacion );
+    }
+    $titulo = apply_filters( 'mk20_ext_course_title', $titulo, $idformacion, $dni, $user_id );
+
+    $pdf = mk20_lares_generar_pdf( $dni, $idformacion, $user_id );
+    if ( false === $pdf ) {
+        mk20_lares_mark_failure( $state, $item, 'generar_pdf' );
+        return false;
+    }
+
+    $result = mk20_import_external_certificate( $pdf['contenido'], $user_id, $external_id, $titulo, $item['FechaDiploma'] );
+    if ( ! $result ) {
+        mk20_lares_mark_failure( $state, $item, 'importar' );
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Procesa un lote acotado de la sincronización externa de un usuario.
+ *
+ * @param int $user_id   ID del usuario.
+ * @param int $budget    Segundos máximos por lote.
+ * @param int $max_items Máximo de certificados por lote.
+ * @return array { done, busy, imported, pending, total }
+ */
+function mk20_lares_sync_batch( $user_id, $budget = 20, $max_items = 1 ) {
+    $user_id = absint( $user_id );
+
+    if ( 0 === $user_id || ! mk20_lares_is_configured() ) {
+        return array( 'done' => true, 'busy' => false, 'imported' => 0, 'pending' => 0, 'total' => 0 );
+    }
+
+    $state = mk20_sync_state_get( $user_id );
+
+    if ( ! mk20_sync_lock_acquire( $user_id ) ) {
+        return array(
+            'done'     => empty( $state['pending'] ) && ! mk20_sync_state_has_due_deferred( $state ),
+            'busy'     => true,
+            'imported' => 0,
+            'pending'  => count( $state['pending'] ),
+            'total'    => (int) $state['total'],
+        );
     }
 
     $options = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
     $ttl     = isset( $options['lares_sync_ttl'] ) ? max( 300, absint( $options['lares_sync_ttl'] ) ) : 21600;
 
-    $force_sync = ! empty( $options['lares_force_sync'] );
-
-    $transient_key = 'mk20_ext_sync_' . $user_id;
-    if ( ! $force_sync && get_transient( $transient_key ) ) {
-        return;
-    }
-
-    mk20_api_audit_log( "LARES_SYNC_INICIO user_id={$user_id}" );
-
-    $dni = mk20_get_buddyboss_field( $user_id, $options['bb_field_dni'], '' );
-    if ( '' === $dni ) {
-        mk20_api_audit_log( "LARES_SYNC_SALT user_id={$user_id} motivo=sin_dni" );
-        return;
-    }
-
-    $formaciones = mk20_lares_formacion_list( $dni );
-    if ( empty( $formaciones ) ) {
-        if ( ! $force_sync ) {
-            set_transient( $transient_key, 'empty', $ttl );
-        }
-        mk20_api_audit_log( "LARES_SYNC_VACIO user_id={$user_id} dni={$dni}" );
-        return;
-    }
+    $state = mk20_lares_sync_prepare( $user_id, $state, $ttl, $options );
 
     $imported = 0;
-    foreach ( $formaciones as $formacion ) {
-        $idformacion = $formacion['idFormacion'];
-        if ( 0 === $idformacion ) {
-            continue;
+    $start    = microtime( true );
+
+    while ( ! empty( $state['pending'] ) && $imported < max( 1, absint( $max_items ) ) ) {
+        $item    = array_shift( $state['pending'] );
+        $elapsed = microtime( true ) - $start;
+
+        if ( $imported > 0 && ( $elapsed + ( (int) $state['avg_ms'] / 1000 ) ) > $budget ) {
+            array_unshift( $state['pending'], $item );
+            break;
         }
 
-        if ( '' === $formacion['FechaDiploma'] ) {
-            continue; // Sin diploma emitido en Lares: no generar ni importar hasta que tenga fecha.
-        }
+        $t0 = microtime( true );
+        $ok = mk20_lares_import_pending_item( $user_id, $item, $state['dni'], $state );
 
-        $external_id = $dni . '_' . $idformacion;
-        $hash        = md5( $external_id );
-        if ( get_user_meta( $user_id, '_mk20_ext_cert_path_' . $hash, true ) ) {
-            continue; // Ya importado.
-        }
+        $state['avg_ms'] = max( 1000, (int) round( ( microtime( true ) - $t0 ) * 1000 ) );
 
-        $pdf = mk20_lares_generar_pdf( $dni, $idformacion, $user_id );
-        if ( false === $pdf ) {
-            continue; // Error ya registrado (audit log + rechazados).
-        }
-
-        if ( '' !== $formacion['titulo'] ) {
-            $titulo = $formacion['titulo'];
-        } else {
-            /* translators: %d: identificador de la formación en Lares. */
-            $titulo = sprintf( __( 'Formación Lares %d', 'mk20-custom-certificates' ), $idformacion );
-        }
-        $titulo = apply_filters( 'mk20_ext_course_title', $titulo, $idformacion, $dni, $user_id );
-
-        $result = mk20_import_external_certificate( $pdf['contenido'], $user_id, $external_id, $titulo, $formacion['FechaDiploma'] );
-        if ( $result ) {
+        if ( $ok ) {
             $imported++;
         }
+
+        // Se persiste tras cada ítem para no perder progreso si el proceso muere.
+        mk20_sync_state_save( $user_id, $state );
     }
 
-    if ( ! $force_sync ) {
-        set_transient( $transient_key, 'done_' . $imported, $ttl );
+    $done = empty( $state['pending'] ) && ! mk20_sync_state_has_due_deferred( $state );
+
+    if ( $done ) {
+        $state['list_at'] = time();
     }
-    mk20_api_audit_log( "LARES_SYNC_OK user_id={$user_id} dni={$dni} importados={$imported}" );
+
+    mk20_sync_state_save( $user_id, $state );
+    mk20_sync_lock_release( $user_id );
+
+    if ( $done ) {
+        set_transient( 'mk20_ext_sync_' . $user_id, 'done_' . $imported, $ttl );
+    }
+
+    mk20_api_audit_log( "LARES_BATCH user_id={$user_id} importados={$imported} pendientes=" . count( $state['pending'] ) . ' done=' . ( $done ? '1' : '0' ) );
+
+    return array(
+        'done'     => $done,
+        'busy'     => false,
+        'imported' => $imported,
+        'pending'  => count( $state['pending'] ),
+        'total'    => (int) $state['total'],
+    );
 }
 
 /**
@@ -812,7 +1134,7 @@ function mk20_lares_login( $forzar = false ) {
     }
 
     $response = wp_remote_post( $base . '/wpapilogin/index.php', array(
-        'timeout'   => 15,
+        'timeout'   => 10,
         'sslverify' => mk20_lares_sslverify(),
         'headers'   => array( 'Content-Type' => 'application/json' ),
         'body'    => wp_json_encode( array(
@@ -854,11 +1176,11 @@ function mk20_lares_login( $forzar = false ) {
  * @param string $accion Valor del campo "request".
  * @param string $token  Token obtenido en el login.
  * @param array  $campos Campos adicionales del cuerpo JSON.
- * @return array|false Respuesta decodificada o false si falla.
+ * @return array|WP_Error Respuesta decodificada o error con detalles.
  */
 function mk20_lares_post( $url, $accion, $token, $campos ) {
     $response = wp_remote_post( $url, array(
-        'timeout'   => 30,
+        'timeout'   => 20,
         'sslverify' => mk20_lares_sslverify(),
         'headers'   => array( 'Content-Type' => 'application/json' ),
         'body'    => wp_json_encode( array_merge( array(
@@ -869,7 +1191,12 @@ function mk20_lares_post( $url, $accion, $token, $campos ) {
 
     if ( is_wp_error( $response ) ) {
         mk20_api_audit_log( "LARES_API_ERROR accion={$accion} motivo=" . $response->get_error_message() );
-        return false;
+
+        return new WP_Error(
+            'mk20_lares_http',
+            $response->get_error_message(),
+            array( 'timeout' => ( 'http_request_failed' === $response->get_error_code() ) )
+        );
     }
 
     $status = wp_remote_retrieve_response_code( $response );
@@ -878,12 +1205,13 @@ function mk20_lares_post( $url, $accion, $token, $campos ) {
     if ( 200 !== $status ) {
         $mensaje = ( is_array( $data ) && isset( $data['message'] ) && is_string( $data['message'] ) ) ? sanitize_text_field( $data['message'] ) : 'sin_mensaje';
         mk20_api_audit_log( "LARES_API_ERROR accion={$accion} http={$status} mensaje={$mensaje}" );
-        return false;
+
+        return new WP_Error( 'mk20_lares_status', $mensaje, array( 'status' => (int) $status ) );
     }
 
     if ( ! is_array( $data ) ) {
         mk20_api_audit_log( "LARES_API_ERROR accion={$accion} motivo=respuesta_no_json" );
-        return false;
+        return new WP_Error( 'mk20_lares_json', 'respuesta_no_json' );
     }
 
     return $data;
@@ -909,18 +1237,28 @@ function mk20_lares_request( $accion, $campos = array() ) {
     }
 
     $resultado = mk20_lares_post( $base . '/wpapigetpdf/index.php', $accion, $token, $campos );
-    if ( false !== $resultado ) {
+    if ( ! is_wp_error( $resultado ) ) {
         return $resultado;
     }
 
-    // Posible token caducado: un re-login y un único reintento.
+    // Solo se reintenta si el token pudo caducar (401/403). Un timeout o un
+    // error de red no se reintentan para no duplicar la espera.
+    $error_data = $resultado->get_error_data();
+    $reintentar = is_array( $error_data ) && isset( $error_data['status'] ) && in_array( (int) $error_data['status'], array( 401, 403 ), true );
+
+    if ( ! $reintentar ) {
+        return false;
+    }
+
     delete_transient( 'mk20_lares_token' );
     $token = mk20_lares_login( true );
     if ( false === $token ) {
         return false;
     }
 
-    return mk20_lares_post( $base . '/wpapigetpdf/index.php', $accion, $token, $campos );
+    $resultado = mk20_lares_post( $base . '/wpapigetpdf/index.php', $accion, $token, $campos );
+
+    return is_wp_error( $resultado ) ? false : $resultado;
 }
 
 /**
