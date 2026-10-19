@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-19T17:04:24+00:00\n"
+"POT-Creation-Date: 2026-10-19T18:01:49+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: mk20-custom-certificates\n"
@@ -364,7 +364,7 @@ msgstr ""
 
 #: includes/class-mk20-admin.php:734
 #: includes/class-mk20-admin.php:898
-#: mk20-custom-certificates.php:583
+#: mk20-custom-certificates.php:594
 msgid "Curso"
 msgstr ""
 
@@ -453,7 +453,7 @@ msgid "Fecha"
 msgstr ""
 
 #: includes/class-mk20-admin.php:901
-#: mk20-custom-certificates.php:585
+#: mk20-custom-certificates.php:596
 msgid "Descargar"
 msgstr ""
 
@@ -642,7 +642,7 @@ msgid "Mis Certificados"
 msgstr ""
 
 #: mk20-custom-certificates.php:523
-#: mk20-custom-certificates.php:790
+#: mk20-custom-certificates.php:861
 msgid "Certificado eliminado correctamente."
 msgstr ""
 
@@ -651,7 +651,7 @@ msgid "Este usuario no tiene certificados visibles."
 msgstr ""
 
 #: mk20-custom-certificates.php:539
-#: mk20-custom-certificates.php:702
+#: mk20-custom-certificates.php:773
 msgid "Buscando nuevos certificados…"
 msgstr ""
 
@@ -659,45 +659,57 @@ msgstr ""
 msgid "Aún no tienes certificados. Completa un curso para obtener tu primer certificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:584
+#: mk20-custom-certificates.php:595
 msgid "Fecha de emisión"
 msgstr ""
 
-#: mk20-custom-certificates.php:615
+#: mk20-custom-certificates.php:626
 msgid "Descargar PDF"
 msgstr ""
 
-#: mk20-custom-certificates.php:703
+#: mk20-custom-certificates.php:642
+msgid "« Anterior"
+msgstr ""
+
+#: mk20-custom-certificates.php:643
+msgid "Siguiente »"
+msgstr ""
+
+#: mk20-custom-certificates.php:649
+msgid "Paginación de certificados"
+msgstr ""
+
+#: mk20-custom-certificates.php:774
 msgid "Certificados actualizados."
 msgstr ""
 
-#: mk20-custom-certificates.php:704
+#: mk20-custom-certificates.php:775
 msgid "Recargando…"
 msgstr ""
 
-#: mk20-custom-certificates.php:705
+#: mk20-custom-certificates.php:776
 msgid "No se pudieron comprobar los certificados. Se reintentará automáticamente."
 msgstr ""
 
-#: mk20-custom-certificates.php:754
-#: mk20-custom-certificates.php:799
+#: mk20-custom-certificates.php:825
+#: mk20-custom-certificates.php:870
 msgid "No tienes permisos para realizar esta acción."
 msgstr ""
 
-#: mk20-custom-certificates.php:759
+#: mk20-custom-certificates.php:830
 msgid "ID de curso inválido."
 msgstr ""
 
-#: mk20-custom-certificates.php:764
-#: mk20-custom-certificates.php:809
+#: mk20-custom-certificates.php:835
+#: mk20-custom-certificates.php:880
 msgid "Nonce inválido."
 msgstr ""
 
-#: mk20-custom-certificates.php:769
-#: mk20-custom-certificates.php:817
+#: mk20-custom-certificates.php:840
+#: mk20-custom-certificates.php:888
 msgid "Usuario no especificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:804
+#: mk20-custom-certificates.php:875
 msgid "Hash de certificado inválido."
 msgstr ""

@@ -575,6 +575,17 @@ function mk20_certificates_screen_content() {
         return;
     }
 
+    $per_page = absint( apply_filters( 'mk20_certificates_per_page', 20 ) );
+    $per_page = $per_page > 0 ? $per_page : 20;
+    $total    = count( $results );
+    $pages    = (int) ceil( $total / $per_page );
+
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Paginación de solo lectura.
+    $current = isset( $_GET['cert_page'] ) ? max( 1, absint( $_GET['cert_page'] ) ) : 1;
+    $current = min( $current, max( 1, $pages ) );
+
+    $page_results = array_slice( $results, ( $current - 1 ) * $per_page, $per_page );
+
     $native_download_url = admin_url( 'admin-post.php?action=mk20_download_cert' );
     $ext_download_url    = admin_url( 'admin-post.php?action=mk20_download_ext_cert' );
 
@@ -585,7 +596,7 @@ function mk20_certificates_screen_content() {
             <th style="padding:12px 8px;">' . esc_html__( 'Descargar', 'mk20-custom-certificates' ) . '</th>
           </tr></thead><tbody>';
 
-    foreach ( $results as $row ) {
+    foreach ( $page_results as $row ) {
         $is_external = strpos( $row->mk20_key, '_mk20_ext_cert_path_' ) === 0;
 
         if ( $is_external ) {
@@ -620,6 +631,29 @@ function mk20_certificates_screen_content() {
 
     echo '</tbody></table>';
 
+    if ( $pages > 1 ) {
+        $page_links = paginate_links(
+            array(
+                'base'      => add_query_arg( 'cert_page', '%#%' ),
+                'format'    => '',
+                'current'   => $current,
+                'total'     => $pages,
+                'mid_size'  => 2,
+                'prev_text' => esc_html__( '« Anterior', 'mk20-custom-certificates' ),
+                'next_text' => esc_html__( 'Siguiente »', 'mk20-custom-certificates' ),
+                'type'      => 'array',
+            )
+        );
+
+        if ( is_array( $page_links ) && ! empty( $page_links ) ) {
+            echo '<nav class="mk20-certificates-pagination" aria-label="' . esc_attr__( 'Paginación de certificados', 'mk20-custom-certificates' ) . '"><ul>';
+            foreach ( $page_links as $page_link ) {
+                echo '<li>' . wp_kses_post( $page_link ) . '</li>';
+            }
+            echo '</ul></nav>';
+        }
+    }
+
     echo '<style>
         .mk20-certificates-table td, .mk20-certificates-table th {
             font-size: 14px;
@@ -627,6 +661,43 @@ function mk20_certificates_screen_content() {
         .mk20-certificates-table .button:hover {
             background: #059669 !important;
             color: #fff !important;
+        }
+        .mk20-certificates-pagination {
+            margin-top: 16px;
+        }
+        .mk20-certificates-pagination ul {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .mk20-certificates-pagination li {
+            margin: 0;
+        }
+        .mk20-certificates-pagination a,
+        .mk20-certificates-pagination span {
+            display: inline-block;
+            min-width: 34px;
+            padding: 6px 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            text-align: center;
+            text-decoration: none;
+            color: #334155;
+            background: #fff;
+            line-height: 1.4;
+        }
+        .mk20-certificates-pagination .current {
+            background: #10b981;
+            border-color: #10b981;
+            color: #fff;
+            font-weight: 600;
+        }
+        .mk20-certificates-pagination a:hover {
+            border-color: #10b981;
+            color: #059669;
         }
         .mk20-cert-sync {
             display: flex;
