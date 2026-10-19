@@ -176,9 +176,10 @@ function mk20_get_default_settings() {
         // 9. Integración API LaresFormación (ver documento_formacion.pdf).
         // El usuario/password SOLO viven en wp-config.php (constantes
         // MK20_LARES_API_USER/PASS) y nunca se guardan en la BD.
-        'lares_enabled'  => 0,
-        'lares_api_base' => '',
-        'lares_sync_ttl' => 21600, // 6 horas en segundos.
+        'lares_enabled'    => 0,
+        'lares_api_base'   => '',
+        'lares_sync_ttl'   => 21600, // 6 horas en segundos.
+        'lares_force_sync' => 0, // 1 = ignorar caché y llamar siempre a la API.
     ];
 }
 
@@ -403,8 +404,10 @@ function mk20_sync_external_certificates( $user_id ) {
     $options = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
     $ttl     = isset( $options['lares_sync_ttl'] ) ? max( 300, absint( $options['lares_sync_ttl'] ) ) : 21600;
 
+    $force_sync = ! empty( $options['lares_force_sync'] );
+
     $transient_key = 'mk20_ext_sync_' . $user_id;
-    if ( get_transient( $transient_key ) ) {
+    if ( ! $force_sync && get_transient( $transient_key ) ) {
         return;
     }
 
@@ -418,7 +421,9 @@ function mk20_sync_external_certificates( $user_id ) {
 
     $formaciones = mk20_lares_formacion_list( $dni );
     if ( empty( $formaciones ) ) {
-        set_transient( $transient_key, 'empty', $ttl );
+        if ( ! $force_sync ) {
+            set_transient( $transient_key, 'empty', $ttl );
+        }
         mk20_api_audit_log( "LARES_SYNC_VACIO user_id={$user_id} dni={$dni}" );
         return;
     }
@@ -428,6 +433,10 @@ function mk20_sync_external_certificates( $user_id ) {
         $idformacion = $formacion['idFormacion'];
         if ( 0 === $idformacion ) {
             continue;
+        }
+
+        if ( '' === $formacion['FechaDiploma'] ) {
+            continue; // Sin diploma emitido en Lares: no generar ni importar hasta que tenga fecha.
         }
 
         $external_id = $dni . '_' . $idformacion;
@@ -455,7 +464,9 @@ function mk20_sync_external_certificates( $user_id ) {
         }
     }
 
-    set_transient( $transient_key, 'done_' . $imported, $ttl );
+    if ( ! $force_sync ) {
+        set_transient( $transient_key, 'done_' . $imported, $ttl );
+    }
     mk20_api_audit_log( "LARES_SYNC_OK user_id={$user_id} dni={$dni} importados={$imported}" );
 }
 
@@ -703,8 +714,82 @@ function mk20_upload_certificate_to_external_api( $pdf_path, $user_id, $course_i
  */
 
 /**
+ * Extrae el objeto JSON de una respuesta contaminada con volcado de debug.
+ *
+ * La API Lares puede devolver trazas (SQL, var_dump) pegadas al JSON
+ * (ajuste app_debug_con_get activado en su lado). Localiza '{"status"'
+ * y recorta hasta su llave de cierre equilibrada. Si no hay marca,
+ * devuelve el cuerpo tal cual (respuesta limpia o formato desconocido).
+ *
+ * @param string $raw Cuerpo crudo de la respuesta.
+ * @return string Subcadena JSON candidata (o el cuerpo original).
+ */
+function mk20_lares_extract_json( $raw ) {
+    if ( ! is_string( $raw ) || '' === $raw ) {
+        return '';
+    }
+
+    $start = strpos( $raw, '{"status"' );
+    if ( false === $start ) {
+        return $raw;
+    }
+
+    $len     = strlen( $raw );
+    $depth   = 0;
+    $in_str  = false;
+    $escaped = false;
+
+    for ( $i = $start; $i < $len; $i++ ) {
+        $c = $raw[ $i ];
+
+        if ( $in_str ) {
+            if ( $escaped ) {
+                $escaped = false;
+            } elseif ( '\\' === $c ) {
+                $escaped = true;
+            } elseif ( '"' === $c ) {
+                $in_str = false;
+            }
+            continue;
+        }
+
+        if ( '"' === $c ) {
+            $in_str = true;
+        } elseif ( '{' === $c ) {
+            $depth++;
+        } elseif ( '}' === $c ) {
+            $depth--;
+            if ( 0 === $depth ) {
+                return substr( $raw, $start, $i - $start + 1 );
+            }
+        }
+    }
+
+    return $raw;
+}
+
+/**
+ * Indica si se verifica el TLS en las llamadas a LaresFormación.
+ *
+ * Lares usa un certificado autofirmado con clave débil (verificado el
+ * 2026-10-09: "EE certificate key too weak"). Por defecto NO se verifica
+ * (equivale a curl -k): el tráfico sigue cifrado pero sin autenticar al
+ * servidor (riesgo MITM asumido por indicación de Lares). Si instalan un
+ * certificado válido, definir MK20_LARES_SSLVERIFY como true en wp-config.php.
+ *
+ * @return bool
+ */
+function mk20_lares_sslverify() {
+    if ( defined( 'MK20_LARES_SSLVERIFY' ) ) {
+        return (bool) MK20_LARES_SSLVERIFY;
+    }
+
+    return false;
+}
+
+/**
  * Obtiene un token válido de la API Lares (acción "login").
- * Reutiliza el transient mk20_lares_token (12h) salvo $forzar.
+ * Reutiliza el transient mk20_lares_token (8h, según Lares) salvo $forzar.
  *
  * @param bool $forzar True para ignorar caché y pedir token nuevo.
  * @return string|false Token o false si falla.
@@ -727,8 +812,9 @@ function mk20_lares_login( $forzar = false ) {
     }
 
     $response = wp_remote_post( $base . '/wpapilogin/index.php', array(
-        'timeout' => 15,
-        'headers' => array( 'Content-Type' => 'application/json' ),
+        'timeout'   => 15,
+        'sslverify' => mk20_lares_sslverify(),
+        'headers'   => array( 'Content-Type' => 'application/json' ),
         'body'    => wp_json_encode( array(
             'request'  => 'login',
             'user'     => $user,
@@ -748,13 +834,13 @@ function mk20_lares_login( $forzar = false ) {
         return false;
     }
 
-    $data = json_decode( wp_remote_retrieve_body( $response ), true );
+    $data = json_decode( mk20_lares_extract_json( wp_remote_retrieve_body( $response ) ), true );
     if ( ! is_array( $data ) || empty( $data['token'] ) || ! is_string( $data['token'] ) ) {
         mk20_api_audit_log( 'LARES_LOGIN_ERROR motivo=respuesta_invalida' );
         return false;
     }
 
-    set_transient( 'mk20_lares_token', $data['token'], 12 * HOUR_IN_SECONDS );
+    set_transient( 'mk20_lares_token', $data['token'], 8 * HOUR_IN_SECONDS );
     mk20_api_audit_log( 'LARES_LOGIN_OK' );
 
     return $data['token'];
@@ -772,8 +858,9 @@ function mk20_lares_login( $forzar = false ) {
  */
 function mk20_lares_post( $url, $accion, $token, $campos ) {
     $response = wp_remote_post( $url, array(
-        'timeout' => 30,
-        'headers' => array( 'Content-Type' => 'application/json' ),
+        'timeout'   => 30,
+        'sslverify' => mk20_lares_sslverify(),
+        'headers'   => array( 'Content-Type' => 'application/json' ),
         'body'    => wp_json_encode( array_merge( array(
             'request' => $accion,
             'token'   => $token,
@@ -786,7 +873,7 @@ function mk20_lares_post( $url, $accion, $token, $campos ) {
     }
 
     $status = wp_remote_retrieve_response_code( $response );
-    $data   = json_decode( wp_remote_retrieve_body( $response ), true );
+    $data   = json_decode( mk20_lares_extract_json( wp_remote_retrieve_body( $response ) ), true );
 
     if ( 200 !== $status ) {
         $mensaje = ( is_array( $data ) && isset( $data['message'] ) && is_string( $data['message'] ) ) ? sanitize_text_field( $data['message'] ) : 'sin_mensaje';
@@ -864,7 +951,7 @@ function mk20_lares_formacion_list( $dni ) {
             'idFormacion'  => absint( $item['idFormacion'] ),
             'idAlumno'     => isset( $item['idAlumno'] ) ? absint( $item['idAlumno'] ) : 0,
             'FechaDiploma' => ( isset( $item['FechaDiploma'] ) && is_string( $item['FechaDiploma'] ) ) ? sanitize_text_field( $item['FechaDiploma'] ) : '',
-            'titulo'       => ( isset( $item['titulo'] ) && is_string( $item['titulo'] ) ) ? sanitize_text_field( $item['titulo'] ) : '',
+            'titulo'       => ( isset( $item['nombreCurso'] ) && is_string( $item['nombreCurso'] ) ) ? sanitize_text_field( $item['nombreCurso'] ) : ( ( isset( $item['titulo'] ) && is_string( $item['titulo'] ) ) ? sanitize_text_field( $item['titulo'] ) : '' ),
         );
     }
 

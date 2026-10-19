@@ -158,7 +158,7 @@ class MK20_Admin {
         }
 
         // Checkboxes (centrar) — 1 si está marcado, 0 si no
-        $cb_fields = [ 'name_center', 'company_line_center', 'front_course_center', 'date_center', 'contents_center', 'keep_data_on_uninstall', 'lares_enabled' ];
+        $cb_fields = [ 'name_center', 'company_line_center', 'front_course_center', 'date_center', 'contents_center', 'keep_data_on_uninstall', 'lares_enabled', 'lares_force_sync' ];
         foreach ( $cb_fields as $f ) {
             $output[ $f ] = isset( $input[ $f ] ) ? 1 : 0;
         }
@@ -238,6 +238,15 @@ class MK20_Admin {
                 }
                 .mk20-field-grid .mk20-field-group {
                     margin-bottom: 0;
+                    min-width: 0;
+                }
+                .mk20-field-group input[type="text"],
+                .mk20-field-group input[type="url"],
+                .mk20-field-group input[type="number"],
+                .mk20-field-group textarea {
+                    width: 100%;
+                    max-width: 100%;
+                    box-sizing: border-box;
                 }
                 .mk20-image-preview-container {
                     display: flex;
@@ -686,6 +695,13 @@ class MK20_Admin {
                                 <div class="mk20-field-group">
                                     <label><?php esc_html_e( 'Caché de sincronización (segundos, mín. 300)', 'mk20-custom-certificates' ); ?></label>
                                     <input type="number" min="300" step="60" name="mk20_cert_settings[lares_sync_ttl]" value="<?php echo esc_attr( $settings['lares_sync_ttl'] ); ?>" class="regular-text">
+                                </div>
+                                <div class="mk20-field-group">
+                                    <label class="align-checkbox-label" style="margin-top:0;">
+                                        <input type="checkbox" name="mk20_cert_settings[lares_force_sync]" value="1" <?php checked( ! empty( $settings['lares_force_sync'] ) ); ?>>
+                                        <?php esc_html_e( 'Forzar sincronización (ignorar caché)', 'mk20-custom-certificates' ); ?>
+                                    </label>
+                                    <p class="description"><?php esc_html_e( 'Si está marcado, cada visita al perfil llama a la API sin respetar la caché. Úsalo solo para pruebas y desmárcalo después.', 'mk20-custom-certificates' ); ?></p>
                                 </div>
                             </div>
                         </div>
