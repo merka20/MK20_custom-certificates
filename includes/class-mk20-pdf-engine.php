@@ -263,7 +263,7 @@ class MK20_PDF_Engine {
             $this->write_text( $pdf, $verify_page . $short_code, 10, 205, 'Arial', '', 6, '#666666', false );
             $qr_data    = home_url( '/verificar/' . $short_code );
             $qr_url  = 'https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=' . urlencode( $qr_data );
-            $qr_temp = download_url( $qr_url, 5 );
+            $qr_temp = download_url( $qr_url, 3 );
             if ( ! is_wp_error( $qr_temp ) ) {
                 $pdf->Image( $qr_temp, 257, 188, 20, 20 );
                 wp_delete_file( $qr_temp );
