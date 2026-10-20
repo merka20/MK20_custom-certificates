@@ -439,7 +439,7 @@ class MK20_REST {
         $course_id = absint( $row->course_id );
 
         $user_info    = get_userdata( $user_id );
-        $course_title = get_the_title( $course_id );
+        $course_title = mk20_clean_course_title( get_the_title( $course_id ) );
         $cert_ts      = get_user_meta( $user_id, '_mk20_cert_ts_' . $course_id, true );
 
         if ( ! $user_info || ! $course_title ) {

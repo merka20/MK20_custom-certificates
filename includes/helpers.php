@@ -82,7 +82,7 @@ function mk20_clean_course_title( $title ) {
     if ( $pos !== false ) {
         $title = trim( substr( $title, $pos + 1 ) );
     }
-    return $title;
+    return html_entity_decode( $title, ENT_QUOTES, 'UTF-8' );
 }
 
 function mk20_get_course_meta( $course_id, $meta_key, $fallback = '' ) {
