@@ -121,6 +121,7 @@ class MK20_Admin {
         // Rutas de las imágenes
         $output['front_image'] = isset( $input['front_image'] ) ? esc_url_raw( $input['front_image'] ) : $defaults['front_image'];
         $output['back_image']  = isset( $input['back_image'] )  ? esc_url_raw( $input['back_image'] )  : $defaults['back_image'];
+        $output['verify_logo'] = isset( $input['verify_logo'] ) ? esc_url_raw( $input['verify_logo'] ) : $defaults['verify_logo'];
 
         // Mapeo de campos de BuddyBoss (xprofile)
         $bb_text = [ 'bb_field_dni', 'bb_field_company', 'bb_field_cif' ];
@@ -182,6 +183,9 @@ class MK20_Admin {
 
         $front_preview = ! empty( $front_val ) ? $front_val : $default_front;
         $back_preview  = ! empty( $back_val )  ? $back_val  : $default_back;
+
+        $verify_logo_val     = ! empty( $settings['verify_logo'] ) ? $settings['verify_logo'] : '';
+        $verify_logo_preview = ! empty( $verify_logo_val ) ? $verify_logo_val : get_site_icon_url( 128 );
         ?>
         <div class="wrap mk20-admin-wrap">
             <h1 class="wp-heading-inline"><?php echo esc_html( get_admin_page_title() ); ?></h1>
@@ -385,6 +389,22 @@ class MK20_Admin {
                                             <button type="button" class="mk20-btn-secondary" onclick="document.getElementById('back-image-input').value=''; document.getElementById('back-image-preview').src='<?php echo esc_url( $default_back ); ?>'; this.style.display='none';" style="color: #ef4444;"><?php esc_html_e( 'Quitar', 'mk20-custom-certificates' ); ?></button>
                                         <?php endif; ?>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tarjeta de Logo de Verificación -->
+                        <div class="mk20-card">
+                            <h2><?php esc_html_e( 'Logo de la página de verificación', 'mk20-custom-certificates' ); ?></h2>
+                            <p class="description"><?php esc_html_e( 'Imagen que se muestra al verificar un certificado. Si se deja vacía se usa el logo del tema o, en su defecto, el icono del sitio.', 'mk20-custom-certificates' ); ?></p>
+                            <div class="mk20-image-card" style="max-width: 320px; margin-top: 20px;">
+                                <img id="verify-logo-preview" src="<?php echo esc_url( $verify_logo_preview ); ?>" alt="Logo de verificación" style="max-height: 80px; object-fit: contain;">
+                                <input type="hidden" name="mk20_cert_settings[verify_logo]" id="verify-logo-input" value="<?php echo esc_attr( $verify_logo_val ); ?>">
+                                <div>
+                                    <button type="button" class="mk20-upload-button mk20-btn-secondary" data-input="verify-logo-input" data-preview="verify-logo-preview"><?php esc_html_e( 'Seleccionar Imagen', 'mk20-custom-certificates' ); ?></button>
+                                    <?php if ( ! empty( $verify_logo_val ) ) : ?>
+                                        <button type="button" class="mk20-btn-secondary" onclick="document.getElementById('verify-logo-input').value=''; document.getElementById('verify-logo-preview').src='<?php echo esc_url( get_site_icon_url( 128 ) ); ?>'; this.style.display='none';" style="color: #ef4444;"><?php esc_html_e( 'Quitar', 'mk20-custom-certificates' ); ?></button>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>

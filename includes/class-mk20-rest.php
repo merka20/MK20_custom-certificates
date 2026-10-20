@@ -41,6 +41,11 @@ class MK20_REST {
     }
 
     private function get_logo_html() {
+        $options = wp_parse_args( get_option( 'mk20_cert_settings', [] ), mk20_get_default_settings() );
+        if ( ! empty( $options['verify_logo'] ) ) {
+            return '<img src="' . esc_url( $options['verify_logo'] ) . '" alt="' . esc_attr( get_bloginfo( 'name' ) ) . '" style="max-height:60px; margin-bottom:12px;">';
+        }
+
         $logo_id = get_theme_mod( 'custom_logo' );
         if ( $logo_id ) {
             $logo_url = wp_get_attachment_image_url( $logo_id, 'medium' );

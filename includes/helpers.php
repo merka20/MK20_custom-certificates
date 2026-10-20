@@ -218,6 +218,7 @@ function mk20_get_default_settings() {
         // Rutas de las imágenes (vacío = usar plantillas del plugin)
         'front_image' => '',
         'back_image'  => '',
+        'verify_logo' => '',
 
         // Mapeo de BuddyBoss
         'bb_field_dni'     => 'DNI/NIE',
