@@ -106,6 +106,19 @@ class MK20_PDF_Engine {
             $course_code = $options['fallback_course_code'];
         }
 
+        // Fechas: LearnDash (por alumno) manda; si no hay dato, meta del curso y fallback global.
+        if ( $user_id > 0 && $course_id > 0 ) {
+            $auto_start = mk20_format_cert_date( mk20_get_user_course_start_ts( $user_id, $course_id ) );
+            if ( '' !== $auto_start ) {
+                $start_date = $auto_start;
+            }
+
+            $auto_end = mk20_format_cert_date( mk20_get_user_course_end_ts( $user_id, $course_id ) );
+            if ( '' !== $auto_end ) {
+                $end_date = $auto_end;
+            }
+        }
+
         if ( empty( $start_date ) && $course_id > 0 ) {
             $start_date = mk20_get_course_meta( $course_id, '_mk20_course_start_date', $options['fallback_course_start_date'] );
         } elseif ( empty( $start_date ) ) {

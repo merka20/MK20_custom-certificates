@@ -1142,6 +1142,9 @@ class MK20_Admin {
         <p class="description" style="margin-top: 10px;">
             <?php esc_html_e( 'Estos valores sobrescribirán los datos genéricos del certificado para este curso en particular.', 'mk20-custom-certificates' ); ?>
         </p>
+        <p class="description" style="margin-top: 4px;">
+            <?php esc_html_e( 'En los certificados nativos, las fechas de inicio y fin se recalculan automáticamente desde LearnDash. Estos valores solo se usan si LearnDash no tiene datos del alumno.', 'mk20-custom-certificates' ); ?>
+        </p>
         <?php
     }
 

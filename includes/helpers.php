@@ -95,6 +95,121 @@ function mk20_get_course_meta( $course_id, $meta_key, $fallback = '' ) {
 }
 
 /**
+ * Comprueba (con caché por petición) si existe la tabla de actividad de LearnDash.
+ *
+ * @return bool
+ */
+function mk20_learndash_activity_table_exists() {
+    static $exists = null;
+
+    if ( null !== $exists ) {
+        return $exists;
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'learndash_user_activity';
+
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Comprobación de esquema; el resultado se cachea en estático durante la petición.
+    $exists = (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+
+    return $exists;
+}
+
+/**
+ * Devuelve el timestamp de la primera actividad del alumno en un curso.
+ *
+ * Usa la tabla de actividad de LearnDash y, si no hay datos, cae a la fecha
+ * de acceso al curso y, por último, al acceso por grupo.
+ *
+ * @param int $user_id   ID del usuario.
+ * @param int $course_id ID del curso.
+ * @return int Timestamp Unix o 0 si no hay datos.
+ */
+function mk20_get_user_course_start_ts( $user_id, $course_id ) {
+    $user_id   = absint( $user_id );
+    $course_id = absint( $course_id );
+
+    if ( ! $user_id || ! $course_id ) {
+        return 0;
+    }
+
+    global $wpdb;
+
+    if ( mk20_learndash_activity_table_exists() ) {
+        $table = $wpdb->prefix . 'learndash_user_activity';
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Lectura puntual de la tabla de actividad de LearnDash; sin caché aplicable.
+        $started = $wpdb->get_var(
+            $wpdb->prepare(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Nombre de tabla construido con $wpdb->prefix.
+                "SELECT MIN(activity_started) FROM {$table} WHERE user_id = %d AND course_id = %d AND activity_started > 0",
+                $user_id,
+                $course_id
+            )
+        );
+
+        if ( $started ) {
+            return (int) $started;
+        }
+    }
+
+    $access_from = (int) get_user_meta( $user_id, 'course_' . $course_id . '_access_from', true );
+    if ( $access_from > 0 ) {
+        return $access_from;
+    }
+
+    if ( function_exists( 'learndash_get_course_groups' ) && function_exists( 'learndash_group_access_from' ) ) {
+        $group_start = 0;
+
+        foreach ( (array) learndash_get_course_groups( $course_id ) as $group_id ) {
+            $group_ts = (int) learndash_group_access_from( (int) $group_id, $user_id );
+
+            if ( $group_ts > 0 && ( 0 === $group_start || $group_ts < $group_start ) ) {
+                $group_start = $group_ts;
+            }
+        }
+
+        if ( $group_start > 0 ) {
+            return $group_start;
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * Devuelve el timestamp de finalización del curso guardado por LearnDash.
+ *
+ * @param int $user_id   ID del usuario.
+ * @param int $course_id ID del curso.
+ * @return int Timestamp Unix o 0 si no hay datos.
+ */
+function mk20_get_user_course_end_ts( $user_id, $course_id ) {
+    $user_id   = absint( $user_id );
+    $course_id = absint( $course_id );
+
+    if ( ! $user_id || ! $course_id ) {
+        return 0;
+    }
+
+    $completed = (int) get_user_meta( $user_id, 'course_completed_' . $course_id, true );
+
+    return $completed > 0 ? $completed : 0;
+}
+
+/**
+ * Formatea un timestamp como fecha del certificado (d/m/Y).
+ *
+ * @param int $timestamp Timestamp Unix.
+ * @return string Fecha formateada o cadena vacía.
+ */
+function mk20_format_cert_date( $timestamp ) {
+    $timestamp = (int) $timestamp;
+
+    return $timestamp > 0 ? date_i18n( 'd/m/Y', $timestamp ) : '';
+}
+
+/**
  * Devuelve los valores por defecto de todos los ajustes del plugin.
  * Sirve como fuente única de verdad para los valores predeterminados.
  */

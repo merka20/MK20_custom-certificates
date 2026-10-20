@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-19T18:01:49+00:00\n"
+"POT-Creation-Date: 2026-10-20T12:57:02+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: mk20-custom-certificates\n"
@@ -518,6 +518,10 @@ msgstr ""
 msgid "Estos valores sobrescribirán los datos genéricos del certificado para este curso en particular."
 msgstr ""
 
+#: includes/class-mk20-admin.php:1146
+msgid "En los certificados nativos, las fechas de inicio y fin se recalculan automáticamente desde LearnDash. Estos valores solo se usan si LearnDash no tiene datos del alumno."
+msgstr ""
+
 #: includes/class-mk20-rest.php:112
 #: includes/class-mk20-rest.php:173
 #: includes/class-mk20-rest.php:209
@@ -584,7 +588,7 @@ msgid "No puedes sincronizar los certificados de este usuario."
 msgstr ""
 
 #. translators: %d: identificador de la formación en Lares.
-#: includes/helpers.php:695
+#: includes/helpers.php:810
 #, php-format
 msgid "Formación Lares %d"
 msgstr ""
