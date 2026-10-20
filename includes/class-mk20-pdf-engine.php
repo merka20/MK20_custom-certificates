@@ -278,7 +278,22 @@ class MK20_PDF_Engine {
             $qr_url  = 'https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=' . urlencode( $qr_data );
             $qr_temp = download_url( $qr_url, 3 );
             if ( ! is_wp_error( $qr_temp ) ) {
-                $pdf->Image( $qr_temp, 257, 188, 20, 20 );
+                $qr_type = '';
+                $qr_mime = wp_get_image_mime( $qr_temp );
+                if ( 'image/png' === $qr_mime ) {
+                    $qr_type = 'PNG';
+                } elseif ( 'image/jpeg' === $qr_mime ) {
+                    $qr_type = 'JPG';
+                }
+
+                if ( '' !== $qr_type ) {
+                    try {
+                        $pdf->Image( $qr_temp, 257, 188, 20, 20, $qr_type );
+                    } catch ( Throwable $qr_error ) {
+                        unset( $qr_error );
+                    }
+                }
+
                 wp_delete_file( $qr_temp );
             }
 
@@ -314,7 +329,7 @@ class MK20_PDF_Engine {
 
             return $filepath;
 
-        } catch ( Exception $e ) {
+        } catch ( Throwable $e ) {
             if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
                 // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
                 error_log( 'MK20 Custom Certificates PDF Generation Error: ' . $e->getMessage() );
