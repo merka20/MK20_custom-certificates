@@ -62,8 +62,16 @@ function mk20_get_buddyboss_field( $user_id, $field_name, $fallback = '' ) {
     $meta_key = strtolower( preg_replace( '/[^a-zA-Z0-9_]/', '_', $field_name ) );
     $meta_key = preg_replace( '/_+/', '_', $meta_key );
     $meta_key = trim( $meta_key, '_' );
-    
-    if ( ! empty( $meta_key ) ) {
+
+    $meta_keys = array( $meta_key );
+
+    if ( in_array( $meta_key, array( 'nif_nie', 'dni_nie', 'dni', 'nif', 'nie' ), true ) ) {
+        $meta_keys = array_merge( $meta_keys, array( 'dni_nie', 'nif_nie', 'dni', 'nif', 'nie' ) );
+    }
+
+    $meta_keys = array_unique( array_filter( $meta_keys ) );
+
+    foreach ( $meta_keys as $meta_key ) {
         $meta_val = get_user_meta( $user_id, $meta_key, true );
         if ( ! empty( $meta_val ) ) {
             return trim( $meta_val );
