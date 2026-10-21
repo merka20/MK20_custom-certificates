@@ -136,13 +136,16 @@ function mk20_get_user_course_start_ts( $user_id, $course_id ) {
     global $wpdb;
 
     if ( mk20_learndash_activity_table_exists() ) {
-        $table = $wpdb->prefix . 'learndash_user_activity';
+        $table = esc_sql( $wpdb->prefix . 'learndash_user_activity' );
 
+        // Solo actividades de pasos (lección, tema, cuestionario, etc.).
+        // Se excluyen 'course' y 'access' porque LearnDash puede fecharlas al
+        // crear o matricular el curso, no cuando el alumno empieza de verdad.
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Lectura puntual de la tabla de actividad de LearnDash; sin caché aplicable.
         $started = $wpdb->get_var(
             $wpdb->prepare(
                 // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Nombre de tabla construido con $wpdb->prefix.
-                "SELECT MIN(activity_started) FROM {$table} WHERE user_id = %d AND course_id = %d AND activity_started > 0",
+                "SELECT MIN(activity_started) FROM {$table} WHERE user_id = %d AND course_id = %d AND activity_started > 0 AND activity_type NOT IN ( 'course', 'access', 'group_progress', 'expired' )",
                 $user_id,
                 $course_id
             )
@@ -292,10 +295,12 @@ function mk20_get_default_settings() {
         // 9. Integración API LaresFormación (ver documento_formacion.pdf).
         // El usuario/password SOLO viven en wp-config.php (constantes
         // MK20_LARES_API_USER/PASS) y nunca se guardan en la BD.
-        'lares_enabled'    => 0,
-        'lares_api_base'   => '',
-        'lares_sync_ttl'   => 21600, // 6 horas en segundos.
-        'lares_force_sync' => 0, // 1 = ignorar caché y llamar siempre a la API.
+        'lares_enabled'      => 0,
+        'lares_api_base'     => '',
+        'lares_sync_ttl'     => 21600, // 6 horas en segundos.
+        'lares_force_sync'   => 0, // 1 = ignorar caché y llamar siempre a la API.
+        'lares_compress_pdf' => 1, // 1 = comprimir PDFs externos si Ghostscript está disponible.
+        'lares_pdf_quality'  => 'ebook', // screen | ebook | printer.
     ];
 }
 
@@ -362,8 +367,289 @@ function mk20_lares_is_configured() {
 }
 
 /**
+ * Ejecuta un proceso externo sin pasar por el shell y con timeout.
+ *
+ * @param array $command Comando y argumentos.
+ * @param int   $timeout Segundos máximos de ejecución.
+ * @return array{ok:bool,exit:int,stdout:string,stderr:string,timed_out:bool}
+ */
+function mk20_pdf_run_process( $command, $timeout = 20 ) {
+    $result = array(
+        'ok'        => false,
+        'exit'      => -1,
+        'stdout'    => '',
+        'stderr'    => '',
+        'timed_out' => false,
+    );
+
+    if ( ! function_exists( 'proc_open' ) || ! is_array( $command ) || empty( $command ) ) {
+        return $result;
+    }
+
+    $descriptors = array(
+        0 => array( 'pipe', 'r' ),
+        1 => array( 'pipe', 'w' ),
+        2 => array( 'pipe', 'w' ),
+    );
+
+    // phpcs:ignore Generic.PHP.ForbiddenFunctions.Found,WordPress.PHP.DiscouragedPHPFunctions.system_calls_proc_open -- Necesario para invocar Ghostscript; el comando se pasa como array, sin shell.
+    $process = @proc_open( $command, $descriptors, $pipes );
+    if ( ! is_resource( $process ) ) {
+        return $result;
+    }
+
+    // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Cierre de la tubería del proceso; WP_Filesystem no gestiona pipes.
+    fclose( $pipes[0] );
+    stream_set_blocking( $pipes[1], false );
+    stream_set_blocking( $pipes[2], false );
+
+    $started   = microtime( true );
+    $stdout    = '';
+    $stderr    = '';
+    $exit_code = -1;
+
+    while ( true ) {
+        $stdout .= (string) stream_get_contents( $pipes[1] );
+        $stderr .= (string) stream_get_contents( $pipes[2] );
+
+        $status = proc_get_status( $process );
+        if ( ! is_array( $status ) || empty( $status['running'] ) ) {
+            if ( is_array( $status ) && isset( $status['exitcode'] ) && (int) $status['exitcode'] >= 0 ) {
+                $exit_code = (int) $status['exitcode'];
+            }
+            break;
+        }
+
+        if ( ( microtime( true ) - $started ) > $timeout ) {
+            $result['timed_out'] = true;
+            @proc_terminate( $process );
+            break;
+        }
+
+        usleep( 100000 );
+    }
+
+    $stdout .= (string) stream_get_contents( $pipes[1] );
+    $stderr .= (string) stream_get_contents( $pipes[2] );
+
+    // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Cierre de la tubería del proceso; WP_Filesystem no gestiona pipes.
+    fclose( $pipes[1] );
+    // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Cierre de la tubería del proceso; WP_Filesystem no gestiona pipes.
+    fclose( $pipes[2] );
+
+    $close_code = proc_close( $process );
+    if ( $exit_code < 0 && $close_code >= 0 ) {
+        $exit_code = (int) $close_code;
+    }
+
+    $result['stdout'] = $stdout;
+    $result['stderr'] = $stderr;
+    $result['exit']   = $exit_code;
+    $result['ok']     = ! $result['timed_out'] && 0 === $exit_code;
+
+    return $result;
+}
+
+/**
+ * Comprueba si un binario de Ghostscript responde a --version.
+ *
+ * @param string $binary Ruta o nombre del binario.
+ * @return bool
+ */
+function mk20_pdf_compress_gs_works( $binary ) {
+    if ( ! is_string( $binary ) || '' === $binary ) {
+        return false;
+    }
+
+    $result = mk20_pdf_run_process( array( $binary, '--version' ), 3 );
+
+    return ! empty( $result['ok'] ) && '' !== trim( $result['stdout'] );
+}
+
+/**
+ * Devuelve el binario de Ghostscript disponible, o cadena vacía.
+ *
+ * Prioridad: constante MK20_GS_BINARY > filtro > candidatos habituales.
+ * El resultado se cachea 12 horas en un transient.
+ *
+ * @return string
+ */
+function mk20_pdf_compress_gs_binary() {
+    static $cached = null;
+
+    if ( null !== $cached ) {
+        return $cached;
+    }
+
+    if ( ! function_exists( 'proc_open' ) ) {
+        $cached = '';
+        return $cached;
+    }
+
+    $transient = get_transient( 'mk20_gs_binary' );
+    if ( false !== $transient ) {
+        $cached = is_string( $transient ) ? $transient : '';
+        return $cached;
+    }
+
+    $candidates = array();
+
+    if ( defined( 'MK20_GS_BINARY' ) && is_string( MK20_GS_BINARY ) && '' !== MK20_GS_BINARY ) {
+        $candidates[] = MK20_GS_BINARY;
+    }
+
+    $filtered = apply_filters( 'mk20_pdf_compress_gs_binary', '' );
+    if ( is_string( $filtered ) && '' !== $filtered ) {
+        $candidates[] = $filtered;
+    }
+
+    $candidates = array_merge(
+        $candidates,
+        array( 'gs', '/usr/bin/gs', '/usr/local/bin/gs', '/bin/gs', '/opt/homebrew/bin/gs', 'gswin64c.exe', 'gswin32c.exe' )
+    );
+
+    foreach ( (array) glob( 'C:\\Program Files\\gs\\gs*\\bin\\gswin64c.exe' ) as $windows_gs ) {
+        $candidates[] = $windows_gs;
+    }
+
+    $found = '';
+    foreach ( array_unique( array_filter( array_map( 'strval', $candidates ) ) ) as $binary ) {
+        if ( mk20_pdf_compress_gs_works( $binary ) ) {
+            $found = $binary;
+            break;
+        }
+    }
+
+    set_transient( 'mk20_gs_binary', $found, 12 * HOUR_IN_SECONDS );
+    $cached = $found;
+
+    return $cached;
+}
+
+/**
+ * Comprime un PDF externo con Ghostscript si está disponible.
+ *
+ * Si no hay Ghostscript, falla la ejecución o la salida no es válida,
+ * devuelve el contenido original sin interrumpir la importación.
+ *
+ * @param string     $pdf_content Contenido binario del PDF.
+ * @param array|null $settings    Ajustes del plugin (opcional).
+ * @return string Contenido comprimido o el original.
+ */
+function mk20_compress_pdf_content( $pdf_content, $settings = null ) {
+    if ( ! is_string( $pdf_content ) || '' === $pdf_content || substr( $pdf_content, 0, 4 ) !== '%PDF' ) {
+        return $pdf_content;
+    }
+
+    if ( null === $settings ) {
+        $settings = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
+    }
+
+    if ( empty( $settings['lares_compress_pdf'] ) ) {
+        return $pdf_content;
+    }
+
+    $quality = isset( $settings['lares_pdf_quality'] ) ? (string) $settings['lares_pdf_quality'] : 'ebook';
+    if ( ! in_array( $quality, array( 'screen', 'ebook', 'printer' ), true ) ) {
+        $quality = 'ebook';
+    }
+
+    $gs_binary = mk20_pdf_compress_gs_binary();
+    if ( '' === $gs_binary ) {
+        mk20_api_audit_log( 'IMPORT_PDF_COMPRESS_SKIP motivo=ghostscript_no_disponible' );
+        return $pdf_content;
+    }
+
+    $temp_dir = get_temp_dir();
+    $tmp_in   = $temp_dir . wp_unique_filename( $temp_dir, 'mk20-pdf-in.pdf' );
+    $tmp_out  = $temp_dir . wp_unique_filename( $temp_dir, 'mk20-pdf-out.pdf' );
+
+    $written = file_put_contents( $tmp_in, $pdf_content );
+    if ( false === $written ) {
+        wp_delete_file( $tmp_in );
+        mk20_api_audit_log( 'IMPORT_PDF_COMPRESS_SKIP motivo=error_temporal' );
+        return $pdf_content;
+    }
+
+    $command = array(
+        $gs_binary,
+        '-q',
+        '-dNOPAUSE',
+        '-dBATCH',
+        '-dSAFER',
+        '-sDEVICE=pdfwrite',
+        '-dCompatibilityLevel=1.4',
+        '-dPDFSETTINGS=/' . $quality,
+        '-dEmbedAllFonts=true',
+        '-dSubsetFonts=true',
+        '-dAutoRotatePages=/None',
+        '-sOutputFile=' . $tmp_out,
+        $tmp_in,
+    );
+
+    $result = mk20_pdf_run_process( $command, 20 );
+
+    wp_delete_file( $tmp_in );
+
+    $compressed = '';
+    if ( ! empty( $result['ok'] ) && file_exists( $tmp_out ) ) {
+        $compressed = (string) file_get_contents( $tmp_out );
+    }
+    wp_delete_file( $tmp_out );
+
+    if ( '' === $compressed || substr( $compressed, 0, 4 ) !== '%PDF' || false === strpos( $compressed, '%%EOF' ) ) {
+        mk20_api_audit_log(
+            sprintf(
+                'IMPORT_PDF_COMPRESS_SKIP motivo=salida_invalida gs=%s exit=%d timed_out=%d',
+                $gs_binary,
+                (int) $result['exit'],
+                ! empty( $result['timed_out'] ) ? 1 : 0
+            )
+        );
+        return $pdf_content;
+    }
+
+    $in_pages  = (int) preg_match_all( '#/Type\s*/Page[^s]#', $pdf_content );
+    $out_pages = (int) preg_match_all( '#/Type\s*/Page[^s]#', $compressed );
+    if ( $in_pages > 0 && $in_pages !== $out_pages ) {
+        mk20_api_audit_log(
+            sprintf(
+                'IMPORT_PDF_COMPRESS_SKIP motivo=paginas_distintas antes=%d despues=%d',
+                $in_pages,
+                $out_pages
+            )
+        );
+        return $pdf_content;
+    }
+
+    if ( strlen( $compressed ) >= strlen( $pdf_content ) ) {
+        mk20_api_audit_log(
+            sprintf(
+                'IMPORT_PDF_COMPRESS_SKIP motivo=sin_ahorro antes=%d despues=%d',
+                strlen( $pdf_content ),
+                strlen( $compressed )
+            )
+        );
+        return $pdf_content;
+    }
+
+    mk20_api_audit_log(
+        sprintf(
+            'IMPORT_PDF_COMPRESS_OK gs=%s quality=%s antes=%d despues=%d',
+            $gs_binary,
+            $quality,
+            strlen( $pdf_content ),
+            strlen( $compressed )
+        )
+    );
+
+    return $compressed;
+}
+
+/**
  * Importa un certificado PDF desde una fuente externa y lo registra
  * con el mismo formato que los certificados nativos del plugin.
+ * Antes de guardarlo, intenta comprimirlo con Ghostscript si está disponible.
  *
  * @param string $pdf_content  Contenido binario del PDF.
  * @param int    $user_id      ID del usuario en WordPress.
@@ -390,6 +676,8 @@ function mk20_import_external_certificate( $pdf_content, $user_id, $external_id,
     if ( $existing_path && file_exists( $existing_path ) ) {
         return $existing_path;
     }
+
+    $pdf_content = mk20_compress_pdf_content( $pdf_content );
 
     $upload_dir = wp_upload_dir();
     $cert_dir   = $upload_dir['basedir'] . '/mk20-certificates';
@@ -438,13 +726,6 @@ function mk20_import_external_certificate( $pdf_content, $user_id, $external_id,
  * Registra un certificado externo como attachment en la librería multimedia.
  */
 function mk20_register_external_certificate_attachment( $pdf_path, $user_id, $hash, $course_title, $student_name ) {
-    if ( ! function_exists( 'wp_generate_attachment_metadata' ) ) {
-        require_once ABSPATH . 'wp-admin/includes/image.php';
-    }
-    if ( ! function_exists( 'wp_read_video_metadata' ) ) {
-        require_once ABSPATH . 'wp-admin/includes/media.php';
-    }
-
     $existing_attachment_id = get_user_meta( $user_id, '_mk20_ext_cert_attachment_id_' . $hash, true );
     if ( $existing_attachment_id && get_post( $existing_attachment_id ) ) {
         return $existing_attachment_id;
@@ -466,7 +747,7 @@ function mk20_register_external_certificate_attachment( $pdf_path, $user_id, $ha
         return false;
     }
 
-    wp_generate_attachment_metadata( $attach_id, $pdf_path );
+    // No se generan previews del PDF: el plugin no las usa y añaden peso.
     update_post_meta( $attach_id, '_mk20_ext_cert_hash', $hash );
     update_post_meta( $attach_id, '_mk20_cert_user_id', $user_id );
 
@@ -506,8 +787,9 @@ function mk20_store_rejected_pdf( $user_id, $external_id, $course_title, $reason
  * Flujo (documento_formacion.pdf): DNI del perfil BuddyBoss -> formacion_list
  * -> generar_pdf por cada formación no importada -> importación con
  * mk20_import_external_certificate(). El PDF se guarda tal cual lo envía
- * Lares (su diseño). Ante cualquier fallo no rompe el perfil: lo registra
- * en el audit log y/o en rechazados. Respeta el TTL configurable.
+ * Lares (su diseño), salvo que la compresión con Ghostscript esté activa.
+ * Ante cualquier fallo no rompe el perfil: lo registra en el audit log y/o
+ * en rechazados. Respeta el TTL configurable.
  *
  * @param int $user_id ID del usuario en WordPress.
  * @param int $budget  Segundos máximos a dedicar a la sincronización.

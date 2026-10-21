@@ -2,8 +2,8 @@
 Contributors: merka20
 Tags: certificates, learndash, buddypress, pdf, fpdf
 Requires at least: 5.0
-Tested up to: 7.0
-Stable tag: 1.4.3
+Tested up to: 7.1
+Stable tag: 1.4.4
 Requires PHP: 7.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -24,6 +24,11 @@ Certificates can also be uploaded automatically to an external API via POST mult
 3. Go to Settings → MK20 Certificates to configure
 
 == Changelog ==
+
+= 1.4.4 =
+* Native certificate start date now uses the student's first lesson/topic/quiz activity instead of the course or enrollment row
+* Optional compression of external Lares PDFs with Ghostscript (150/300/72 dpi) before saving; the original is kept if Ghostscript is unavailable
+* Certificate attachments no longer generate unused PDF previews and thumbnails, reducing storage usage
 
 = 1.4.3 =
 * Course titles are decoded before rendering the PDF, so HTML entities no longer appear

@@ -3,7 +3,7 @@
  * Plugin Name: MK20 Custom Certificates
  * Plugin URI:  https://github.com/merka20/MK20_custom-certificates
  * Description: Genera certificados PDF de dos caras (anverso y reverso) personalizados mediante FPDF al completar cursos de LearnDash.
- * Version:     1.4.3
+ * Version:     1.4.4
  * Author:      Merka2.0
  * Author URI:  https://merka20.com
  * License:     GPL-2.0-or-later
@@ -322,13 +322,6 @@ function mk20_handle_course_completion( $data ) {
  * Registra el PDF como attachment en la librería multimedia de WordPress.
  */
 function mk20_register_certificate_attachment( $pdf_path, $user_id, $course_id, $course_title, $student_name ) {
-    if ( ! function_exists( 'wp_generate_attachment_metadata' ) ) {
-        require_once ABSPATH . 'wp-admin/includes/image.php';
-    }
-    if ( ! function_exists( 'wp_read_video_metadata' ) ) {
-        require_once ABSPATH . 'wp-admin/includes/media.php';
-    }
-
     $existing_attachment_id = get_user_meta( $user_id, '_mk20_cert_attachment_id_' . $course_id, true );
     if ( $existing_attachment_id && get_post( $existing_attachment_id ) ) {
         return; // Ya está registrado
@@ -350,7 +343,7 @@ function mk20_register_certificate_attachment( $pdf_path, $user_id, $course_id, 
         return;
     }
 
-    wp_generate_attachment_metadata( $attach_id, $pdf_path );
+    // No se generan previews del PDF: el plugin no las usa y añaden peso.
     update_post_meta( $attach_id, '_mk20_cert_user_id', $user_id );
     update_post_meta( $attach_id, '_mk20_cert_course_id', $course_id );
 
