@@ -3,7 +3,7 @@ Contributors: merka20
 Tags: certificates, learndash, buddypress, pdf, fpdf
 Requires at least: 5.0
 Tested up to: 7.1
-Stable tag: 1.4.6
+Stable tag: 1.4.7
 Requires PHP: 7.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -25,9 +25,9 @@ Certificates can also be uploaded automatically to an external API via POST mult
 
 == Changelog ==
 
-= 1.4.6 =
-* Per-course switch to enable or disable certificate generation on completion (new courses default to disabled)
-* Existing courses are migrated as enabled to preserve the previous behaviour
+= 1.4.7 =
+* Per-course certificate switch: all courses generate certificates by default; check "No generar certificado" to disable a specific course
+* Fixes the inverted behaviour introduced in 1.4.6 and cleans its temporary post meta
 
 = 1.4.5 =
 * DNI/NIE is now read from the dni_nie, nif_nie, dni, nif or nie user meta when the configured BuddyBoss field is empty

@@ -1143,7 +1143,7 @@ class MK20_Admin {
         $duration        = get_post_meta( $post->ID, '_mk20_course_duration', true );
         $modality        = get_post_meta( $post->ID, '_mk20_course_modality', true );
         $course_contents = get_post_meta( $post->ID, '_mk20_course_contents', true );
-        $cert_enabled    = mk20_course_certificate_enabled( $post->ID );
+        $cert_disabled   = '1' === (string) get_post_meta( $post->ID, '_mk20_course_certificate_disabled', true );
         
         ?>
         <style>
@@ -1180,12 +1180,12 @@ class MK20_Admin {
             }
         </style>
         <div class="mk20-meta-field mk20-meta-toggle">
-            <label for="mk20_course_certificate_enabled">
-                <input type="checkbox" id="mk20_course_certificate_enabled" name="mk20_course_certificate_enabled" value="1" <?php checked( $cert_enabled ); ?> />
-                <?php esc_html_e( 'Generar certificado MK20 al completar este curso', 'mk20-custom-certificates' ); ?>
+            <label for="mk20_course_certificate_disabled">
+                <input type="checkbox" id="mk20_course_certificate_disabled" name="mk20_course_certificate_disabled" value="1" <?php checked( $cert_disabled ); ?> />
+                <?php esc_html_e( 'No generar certificado MK20 al completar este curso', 'mk20-custom-certificates' ); ?>
             </label>
             <p class="description">
-                <?php esc_html_e( 'Si está desmarcado, al completar el curso no se generará ningún certificado MK20 y tampoco aparecerá el aviso en la página del curso. Los cursos nuevos se crean desmarcados.', 'mk20-custom-certificates' ); ?>
+                <?php esc_html_e( 'Déjalo desmarcado para que el curso emita certificado como siempre. Si lo marcas, al completar el curso no se generará ningún certificado MK20 ni aparecerá el aviso en la página del curso.', 'mk20-custom-certificates' ); ?>
             </p>
         </div>
         <div class="mk20-meta-grid">
@@ -1259,8 +1259,8 @@ class MK20_Admin {
             }
         }
 
-        // Interruptor de certificado por curso (desmarcado = no generar).
-        $cert_enabled = isset( $_POST['mk20_course_certificate_enabled'] ) ? '1' : '0';
-        update_post_meta( $post_id, '_mk20_course_certificate_enabled', $cert_enabled );
+        // Interruptor de certificado por curso (marcado = no generar).
+        $cert_disabled = isset( $_POST['mk20_course_certificate_disabled'] ) ? '1' : '0';
+        update_post_meta( $post_id, '_mk20_course_certificate_disabled', $cert_disabled );
     }
 }

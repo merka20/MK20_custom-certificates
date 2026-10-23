@@ -13,6 +13,7 @@ if ( $mk20_keep ) {
 delete_option( 'mk20_cert_settings' );
 delete_option( 'mk20_rejected_certificates' );
 delete_option( 'mk20_cert_index_db_version' );
+delete_option( 'mk20_course_certificate_switch_cleaned' );
 delete_option( 'mk20_course_certificate_migrated' );
 
 wp_clear_scheduled_hook( 'mk20_sync_user_certificates' );
