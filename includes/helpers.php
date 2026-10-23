@@ -103,6 +103,34 @@ function mk20_get_course_meta( $course_id, $meta_key, $fallback = '' ) {
 }
 
 /**
+ * Indica si un curso debe generar certificado MK20 al completarse.
+ *
+ * Los cursos que ya existían al instalar la versión 1.4.6 se migran a
+ * "activado" para no cambiar el comportamiento. Los cursos nuevos nacen
+ * desactivados y solo generan certificado si se marca la casilla del curso.
+ *
+ * @param int $course_id ID del curso.
+ * @return bool True si el curso genera certificado.
+ */
+function mk20_course_certificate_enabled( $course_id ) {
+    $course_id = absint( $course_id );
+
+    if ( ! $course_id ) {
+        return false;
+    }
+
+    $value = get_post_meta( $course_id, '_mk20_course_certificate_enabled', true );
+
+    /**
+     * Permite alterar desde código si un curso concreto genera certificado.
+     *
+     * @param bool $enabled   True si el curso genera certificado.
+     * @param int  $course_id ID del curso.
+     */
+    return (bool) apply_filters( 'mk20_course_certificate_enabled', '1' === (string) $value, $course_id );
+}
+
+/**
  * Comprueba (con caché por petición) si existe la tabla de actividad de LearnDash.
  *
  * @return bool

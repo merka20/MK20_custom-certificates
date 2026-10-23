@@ -3,7 +3,7 @@ Contributors: merka20
 Tags: certificates, learndash, buddypress, pdf, fpdf
 Requires at least: 5.0
 Tested up to: 7.1
-Stable tag: 1.4.5
+Stable tag: 1.4.6
 Requires PHP: 7.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -24,6 +24,10 @@ Certificates can also be uploaded automatically to an external API via POST mult
 3. Go to Settings → MK20 Certificates to configure
 
 == Changelog ==
+
+= 1.4.6 =
+* Per-course switch to enable or disable certificate generation on completion (new courses default to disabled)
+* Existing courses are migrated as enabled to preserve the previous behaviour
 
 = 1.4.5 =
 * DNI/NIE is now read from the dni_nie, nif_nie, dni, nif or nie user meta when the configured BuddyBoss field is empty

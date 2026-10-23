@@ -21,6 +21,7 @@ Plugin WordPress clásico (sin build, sin composer/npm, sin CI). Genera certific
 - Variables/globals prefijadas `mk20_`. Al construir objetos a partir de user-meta, usar claves `mk20_key`/`mk20_val` (NO `meta_key`/`meta_value`): el sniff `WordPress.DB.SlowDBQuery` las marca como falso positivo).
 - No añadir header `Update URI` (plugin-check lo marca como ERROR `plugin_updater_detected`). No llamar `load_plugin_textdomain()` manualmente (wp.org carga traducciones solo).
 - La tabla `{prefix}mk20_certs` (índice de verificación) se gestiona SOLO vía helpers de `includes/helpers.php`: `mk20_get_cert_index_table()`, `mk20_create_cert_index_table()`, `mk20_ensure_cert_index_table()`, `mk20_index_certificate()`, `mk20_remove_certificate_index()`, `mk20_backfill_cert_index()`.
+- Interruptor de certificado por curso (v1.4.6+): post meta `_mk20_course_certificate_enabled` (`1`/`0`) y casilla en el metabox del curso. Se consulta SOLO con `mk20_course_certificate_enabled()` (helpers.php). Los cursos nuevos nacen en `0`; la migración única `mk20_course_certificate_migrated` activa los cursos existentes.
 
 ## Verificación
 

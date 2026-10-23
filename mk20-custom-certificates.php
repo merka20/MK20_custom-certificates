@@ -3,7 +3,7 @@
  * Plugin Name: MK20 Custom Certificates
  * Plugin URI:  https://github.com/merka20/MK20_custom-certificates
  * Description: Genera certificados PDF de dos caras (anverso y reverso) personalizados mediante FPDF al completar cursos de LearnDash.
- * Version:     1.4.5
+ * Version:     1.4.6
  * Author:      Merka2.0
  * Author URI:  https://merka20.com
  * License:     GPL-2.0-or-later
@@ -19,6 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'MK20_CERT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MK20_CERT_URL', plugin_dir_url( __FILE__ ) );
+define( 'MK20_CERT_VERSION', '1.4.6' );
 define( 'MK20_CERT_DB_VERSION', '1.0.0' );
 
 if ( ! defined( 'MK20_EXT_API_URL' ) ) {
@@ -157,6 +158,40 @@ require_once MK20_CERT_PATH . 'includes/class-mk20-pdf-engine.php';
 require_once MK20_CERT_PATH . 'includes/class-mk20-rest.php';
 
 add_action( 'plugins_loaded', 'mk20_custom_certificates_init' );
+add_action( 'plugins_loaded', 'mk20_migrate_course_certificate_settings', 5 );
+
+/**
+ * Migración única (1.4.6): activa el certificado en los cursos que ya existían.
+ *
+ * A partir de 1.4.6 cada curso tiene su propio interruptor. Los cursos
+ * anteriores a la actualización se dejan activados para conservar el
+ * comportamiento; los cursos creados después nacen desactivados.
+ */
+function mk20_migrate_course_certificate_settings() {
+    if ( '1' === get_option( 'mk20_course_certificate_migrated' ) ) {
+        return;
+    }
+
+    $course_ids = get_posts(
+        array(
+            'post_type'              => 'sfwd-courses',
+            'post_status'            => 'any',
+            'posts_per_page'         => -1,
+            'fields'                 => 'ids',
+            'no_found_rows'          => true,
+            'update_post_term_cache' => false,
+            'update_post_meta_cache' => false,
+        )
+    );
+
+    foreach ( $course_ids as $course_id ) {
+        if ( '' === get_post_meta( $course_id, '_mk20_course_certificate_enabled', true ) ) {
+            update_post_meta( $course_id, '_mk20_course_certificate_enabled', '1' );
+        }
+    }
+
+    update_option( 'mk20_course_certificate_migrated', '1' );
+}
 
 register_activation_hook( __FILE__, 'mk20_activate_flush_rewrites' );
 function mk20_activate_flush_rewrites() {
@@ -275,6 +310,15 @@ function mk20_handle_course_completion( $data ) {
 
     $user_id   = $user->ID;
     $course_id = $course->ID;
+
+    // Interruptor por curso: si está desmarcado no se genera certificado.
+    if ( ! mk20_course_certificate_enabled( $course_id ) ) {
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( "MK20 Custom Certificates: Certificado desactivado para el curso $course_id." );
+        }
+        return;
+    }
 
     $student_name    = mk20_get_student_name( $user_id );
     $course_title    = mk20_clean_course_title( get_the_title( $course_id ) );
