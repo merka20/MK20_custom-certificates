@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: MK20 Custom Certificates 1.4.7\n"
+"Project-Id-Version: MK20 Custom Certificates 1.4.8\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/mk20-custom-certificates\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-23T13:30:05+00:00\n"
+"POT-Creation-Date: 2026-10-24T10:08:06+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: mk20-custom-certificates\n"
@@ -412,7 +412,7 @@ msgstr ""
 
 #: includes/class-mk20-admin.php:789
 #: includes/class-mk20-admin.php:953
-#: mk20-custom-certificates.php:637
+#: mk20-custom-certificates.php:639
 msgid "Curso"
 msgstr ""
 
@@ -501,7 +501,7 @@ msgid "Fecha"
 msgstr ""
 
 #: includes/class-mk20-admin.php:956
-#: mk20-custom-certificates.php:639
+#: mk20-custom-certificates.php:641
 msgid "Descargar"
 msgstr ""
 
@@ -576,6 +576,14 @@ msgstr ""
 
 #: includes/class-mk20-admin.php:1221
 msgid "En los certificados nativos, las fechas de inicio y fin se recalculan automáticamente desde LearnDash. Estos valores solo se usan si LearnDash no tiene datos del alumno."
+msgstr ""
+
+#: includes/class-mk20-learndash.php:107
+msgid "¡Has obtenido un certificado!"
+msgstr ""
+
+#: includes/class-mk20-learndash.php:111
+msgid "Descargar certificado"
 msgstr ""
 
 #: includes/class-mk20-rest.php:117
@@ -655,121 +663,121 @@ msgstr ""
 msgid "MK20 Custom Certificates: La librería FPDF está desactualizada (v%1$s). Hay disponible v%2$s. Revisa los cambios en %3$s."
 msgstr ""
 
-#: mk20-custom-certificates.php:299
-#: mk20-custom-certificates.php:408
+#: mk20-custom-certificates.php:301
+#: mk20-custom-certificates.php:410
 msgid "No tienes permiso para realizar esta acción."
 msgstr ""
 
-#: mk20-custom-certificates.php:302
-#: mk20-custom-certificates.php:412
-#: mk20-custom-certificates.php:432
-#: mk20-custom-certificates.php:485
+#: mk20-custom-certificates.php:304
+#: mk20-custom-certificates.php:414
+#: mk20-custom-certificates.php:434
+#: mk20-custom-certificates.php:487
 msgid "Enlace inválido o expirado."
 msgstr ""
 
-#: mk20-custom-certificates.php:416
+#: mk20-custom-certificates.php:418
 msgid "Ajustes restaurados a los valores por defecto."
 msgstr ""
 
-#: mk20-custom-certificates.php:428
+#: mk20-custom-certificates.php:430
 msgid "Curso no especificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:437
-#: mk20-custom-certificates.php:490
+#: mk20-custom-certificates.php:439
+#: mk20-custom-certificates.php:492
 msgid "Debes iniciar sesión para descargar tu certificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:446
+#: mk20-custom-certificates.php:448
 msgid "El certificado no está disponible. Completa el curso primero."
 msgstr ""
 
-#: mk20-custom-certificates.php:461
-#: mk20-custom-certificates.php:514
+#: mk20-custom-certificates.php:463
+#: mk20-custom-certificates.php:516
 msgid "Error al leer el certificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:481
+#: mk20-custom-certificates.php:483
 msgid "Certificado no especificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:499
+#: mk20-custom-certificates.php:501
 msgid "El certificado no está disponible."
 msgstr ""
 
-#: mk20-custom-certificates.php:543
+#: mk20-custom-certificates.php:545
 msgid "Mis Certificados"
 msgstr ""
 
-#: mk20-custom-certificates.php:566
-#: mk20-custom-certificates.php:904
+#: mk20-custom-certificates.php:568
+#: mk20-custom-certificates.php:906
 msgid "Certificado eliminado correctamente."
 msgstr ""
 
-#: mk20-custom-certificates.php:571
+#: mk20-custom-certificates.php:573
 msgid "Este usuario no tiene certificados visibles."
 msgstr ""
 
-#: mk20-custom-certificates.php:582
-#: mk20-custom-certificates.php:816
+#: mk20-custom-certificates.php:584
+#: mk20-custom-certificates.php:818
 msgid "Buscando nuevos certificados…"
 msgstr ""
 
-#: mk20-custom-certificates.php:616
+#: mk20-custom-certificates.php:618
 msgid "Aún no tienes certificados. Completa un curso para obtener tu primer certificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:638
+#: mk20-custom-certificates.php:640
 msgid "Fecha de emisión"
 msgstr ""
 
-#: mk20-custom-certificates.php:669
+#: mk20-custom-certificates.php:671
 msgid "Descargar PDF"
 msgstr ""
 
-#: mk20-custom-certificates.php:685
+#: mk20-custom-certificates.php:687
 msgid "« Anterior"
 msgstr ""
 
-#: mk20-custom-certificates.php:686
+#: mk20-custom-certificates.php:688
 msgid "Siguiente »"
 msgstr ""
 
-#: mk20-custom-certificates.php:692
+#: mk20-custom-certificates.php:694
 msgid "Paginación de certificados"
 msgstr ""
 
-#: mk20-custom-certificates.php:817
+#: mk20-custom-certificates.php:819
 msgid "Certificados actualizados."
 msgstr ""
 
-#: mk20-custom-certificates.php:818
+#: mk20-custom-certificates.php:820
 msgid "Recargando…"
 msgstr ""
 
-#: mk20-custom-certificates.php:819
+#: mk20-custom-certificates.php:821
 msgid "No se pudieron comprobar los certificados. Se reintentará automáticamente."
 msgstr ""
 
-#: mk20-custom-certificates.php:868
-#: mk20-custom-certificates.php:913
+#: mk20-custom-certificates.php:870
+#: mk20-custom-certificates.php:915
 msgid "No tienes permisos para realizar esta acción."
 msgstr ""
 
-#: mk20-custom-certificates.php:873
+#: mk20-custom-certificates.php:875
 msgid "ID de curso inválido."
 msgstr ""
 
-#: mk20-custom-certificates.php:878
-#: mk20-custom-certificates.php:923
+#: mk20-custom-certificates.php:880
+#: mk20-custom-certificates.php:925
 msgid "Nonce inválido."
 msgstr ""
 
-#: mk20-custom-certificates.php:883
-#: mk20-custom-certificates.php:931
+#: mk20-custom-certificates.php:885
+#: mk20-custom-certificates.php:933
 msgid "Usuario no especificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:918
+#: mk20-custom-certificates.php:920
 msgid "Hash de certificado inválido."
 msgstr ""

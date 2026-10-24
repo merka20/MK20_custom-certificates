@@ -3,7 +3,7 @@
  * Plugin Name: MK20 Custom Certificates
  * Plugin URI:  https://github.com/merka20/MK20_custom-certificates
  * Description: Genera certificados PDF de dos caras (anverso y reverso) personalizados mediante FPDF al completar cursos de LearnDash.
- * Version:     1.4.7
+ * Version:     1.4.8
  * Author:      Merka2.0
  * Author URI:  https://merka20.com
  * License:     GPL-2.0-or-later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'MK20_CERT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MK20_CERT_URL', plugin_dir_url( __FILE__ ) );
-define( 'MK20_CERT_VERSION', '1.4.7' );
+define( 'MK20_CERT_VERSION', '1.4.8' );
 define( 'MK20_CERT_DB_VERSION', '1.0.0' );
 
 if ( ! defined( 'MK20_EXT_API_URL' ) ) {
@@ -156,6 +156,7 @@ require_once MK20_CERT_PATH . 'includes/helpers.php';
 require_once MK20_CERT_PATH . 'includes/class-mk20-admin.php';
 require_once MK20_CERT_PATH . 'includes/class-mk20-pdf-engine.php';
 require_once MK20_CERT_PATH . 'includes/class-mk20-rest.php';
+require_once MK20_CERT_PATH . 'includes/class-mk20-learndash.php';
 
 add_action( 'plugins_loaded', 'mk20_custom_certificates_init' );
 add_action( 'plugins_loaded', 'mk20_cleanup_course_certificate_switch', 5 );
@@ -247,6 +248,7 @@ function mk20_custom_certificates_init() {
     }
 
     new MK20_REST();
+    new MK20_Learndash();
 
     add_action( 'learndash_course_completed', 'mk20_handle_course_completion', 10, 1 );
 

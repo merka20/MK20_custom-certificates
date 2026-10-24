@@ -4,11 +4,12 @@ Plugin WordPress clásico (sin build, sin composer/npm, sin CI). Genera certific
 
 ## Estructura
 
-- `mk20-custom-certificates.php` — bootstrap: define constantes `MK20_CERT_PATH/URL`, `MK20_CERT_DB_VERSION`, opciones de API externa; requiere los 4 archivos de `includes/` (líneas 133-136); hook `mk20_custom_certificates_init` instancia `MK20_Admin` y `MK20_REST`.
+- `mk20-custom-certificates.php` — bootstrap: define constantes `MK20_CERT_PATH/URL`, `MK20_CERT_DB_VERSION`, opciones de API externa; requiere los 5 archivos de `includes/` (líneas 155-159); hook `mk20_custom_certificates_init` instancia `MK20_Admin`, `MK20_REST` y `MK20_Learndash`.
 - `includes/helpers.php` — funciones `mk20_*` (nombre de estudiante, índice de certificados, API externa, audit log, protección de directorio).
 - `includes/class-mk20-admin.php` — panel de ajustes, meta box de cursos, visor admin global.
 - `includes/class-mk20-pdf-engine.php` — render PDF FPDF; plantillas en `templates/diploma-anverso.jpg` y `diploma-reverso.jpg` (NO borrarlas, se referencian por ruta).
 - `includes/class-mk20-rest.php` — endpoints REST + rewrite público `/verificar/{hex12+}` (página pública, fuerza bypass de restricciones BuddyBoss).
+- `includes/class-mk20-learndash.php` — sustituye el enlace del certificado de LearnDash por el PDF de MK20 y pinta el aviso en la página del curso (antes era el mu-plugin `lares-certificado-curso-mk20.php`, ya no debe existir).
 - `lib/fpdf/` — **tercero, nunca modificar, siempre excluir de lint/phpcs/empaquetado**.
 - `uninstall.php` — borra opciones, user-meta `_mk20_cert_*`/`_mk20_ext_cert_*`, directorio `mk20-certificates/` y la tabla `{prefix}mk20_certs`.
 - `languages/mk20-custom-certificates.pot` — regenerar con `wp i18n make-pot`.
