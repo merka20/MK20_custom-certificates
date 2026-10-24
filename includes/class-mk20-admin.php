@@ -757,11 +757,6 @@ class MK20_Admin {
                                         echo '<p class="description" style="color:#059669;">' . esc_html( sprintf( __( 'Ghostscript detectado: %s', 'mk20-custom-certificates' ), $mk20_gs_binary ) ) . '</p>';
                                     }
                                     ?>
-                                    <p class="description" style="margin-top:8px;">
-                                        <a class="button button-secondary" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=mk20_recheck_gs' ), 'mk20_recheck_gs' ) ); ?>">
-                                            <?php esc_html_e( 'Volver a comprobar', 'mk20-custom-certificates' ); ?>
-                                        </a>
-                                    </p>
                                 </div>
                             </div>
                         </div>
