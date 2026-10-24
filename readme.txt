@@ -3,7 +3,7 @@ Contributors: merka20
 Tags: certificates, learndash, buddypress, pdf, fpdf
 Requires at least: 5.0
 Tested up to: 7.1
-Stable tag: 1.4.11
+Stable tag: 1.4.12
 Requires PHP: 7.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -38,6 +38,9 @@ Certificates can also be uploaded automatically to an external API via POST mult
 = 1.4.8 =
 * The certificate link and the course-page notice are now part of the plugin (previously a separate must-use plugin)
 * After updating, delete the `lares-certificado-curso-mk20.php` mu-plugin: keeping both would show the notice twice
+
+= 1.4.12 =
+* Fixed verification hash (SHA-256) overflowing the certificate back page: it is now wrapped across multiple lines
 
 = 1.4.7 =
 * Per-course certificate switch: all courses generate certificates by default; check "No generar certificado" to disable a specific course
