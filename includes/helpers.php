@@ -406,15 +406,16 @@ function mk20_lares_is_configured() {
  *
  * @param array $command Comando y argumentos.
  * @param int   $timeout Segundos máximos de ejecución.
- * @return array{ok:bool,exit:int,stdout:string,stderr:string,timed_out:bool}
+ * @return array{ok:bool,exit:int,stdout:string,stderr:string,timed_out:bool,launch_failed:bool}
  */
 function mk20_pdf_run_process( $command, $timeout = 20 ) {
     $result = array(
-        'ok'        => false,
-        'exit'      => -1,
-        'stdout'    => '',
-        'stderr'    => '',
-        'timed_out' => false,
+        'ok'            => false,
+        'exit'          => -1,
+        'stdout'        => '',
+        'stderr'        => '',
+        'timed_out'     => false,
+        'launch_failed' => false,
     );
 
     if ( ! function_exists( 'proc_open' ) || ! is_array( $command ) || empty( $command ) ) {
@@ -430,6 +431,7 @@ function mk20_pdf_run_process( $command, $timeout = 20 ) {
     // phpcs:ignore Generic.PHP.ForbiddenFunctions.Found,WordPress.PHP.DiscouragedPHPFunctions.system_calls_proc_open -- Necesario para invocar Ghostscript; el comando se pasa como array, sin shell.
     $process = @proc_open( $command, $descriptors, $pipes );
     if ( ! is_resource( $process ) ) {
+        $result['launch_failed'] = true;
         return $result;
     }
 
@@ -486,19 +488,71 @@ function mk20_pdf_run_process( $command, $timeout = 20 ) {
 }
 
 /**
- * Comprueba si un binario de Ghostscript responde a --version.
+ * Devuelve los binarios de Ghostscript candidatos, por orden de prioridad.
  *
- * @param string $binary Ruta o nombre del binario.
- * @return bool
+ * Prioridad: constante MK20_GS_BINARY > filtro > candidatos habituales.
+ *
+ * @return string[]
  */
-function mk20_pdf_compress_gs_works( $binary ) {
-    if ( ! is_string( $binary ) || '' === $binary ) {
-        return false;
+function mk20_pdf_gs_candidates() {
+    $candidates = array();
+
+    if ( defined( 'MK20_GS_BINARY' ) && is_string( MK20_GS_BINARY ) && '' !== MK20_GS_BINARY ) {
+        $candidates[] = MK20_GS_BINARY;
     }
 
-    $result = mk20_pdf_run_process( array( $binary, '--version' ), 3 );
+    $filtered = apply_filters( 'mk20_pdf_compress_gs_binary', '' );
+    if ( is_string( $filtered ) && '' !== $filtered ) {
+        $candidates[] = $filtered;
+    }
 
-    return ! empty( $result['ok'] ) && '' !== trim( $result['stdout'] );
+    $candidates = array_merge(
+        $candidates,
+        array( 'gs', '/usr/bin/gs', '/usr/local/bin/gs', '/bin/gs', '/opt/homebrew/bin/gs', 'gswin64c.exe', 'gswin32c.exe' )
+    );
+
+    foreach ( (array) glob( 'C:\\Program Files\\gs\\gs*\\bin\\gswin64c.exe' ) as $windows_gs ) {
+        $candidates[] = $windows_gs;
+    }
+
+    return array_values( array_unique( array_filter( array_map( 'strval', $candidates ) ) ) );
+}
+
+/**
+ * Prueba cada binario candidato con --version y devuelve el resultado.
+ *
+ * Se detiene en el primer binario válido (no vacío y código de salida 0).
+ *
+ * @return array<int,array{binary:string,ok:bool,exit:int,stdout:string,stderr:string,timed_out:bool,launch_failed:bool}>
+ */
+function mk20_pdf_gs_probe() {
+    $diagnostics = array();
+
+    if ( ! function_exists( 'proc_open' ) ) {
+        return $diagnostics;
+    }
+
+    foreach ( mk20_pdf_gs_candidates() as $binary ) {
+        $result = mk20_pdf_run_process( array( $binary, '--version' ), 3 );
+
+        $works = ! empty( $result['ok'] ) && '' !== trim( (string) $result['stdout'] );
+
+        $diagnostics[] = array(
+            'binary'        => $binary,
+            'ok'            => $works,
+            'exit'          => (int) $result['exit'],
+            'stdout'        => trim( (string) $result['stdout'] ),
+            'stderr'        => trim( (string) $result['stderr'] ),
+            'timed_out'     => ! empty( $result['timed_out'] ),
+            'launch_failed' => ! empty( $result['launch_failed'] ),
+        );
+
+        if ( $works ) {
+            break;
+        }
+    }
+
+    return $diagnostics;
 }
 
 /**
@@ -527,38 +581,32 @@ function mk20_pdf_compress_gs_binary() {
         return $cached;
     }
 
-    $candidates = array();
+    $found       = '';
+    $diagnostics = mk20_pdf_gs_probe();
 
-    if ( defined( 'MK20_GS_BINARY' ) && is_string( MK20_GS_BINARY ) && '' !== MK20_GS_BINARY ) {
-        $candidates[] = MK20_GS_BINARY;
-    }
-
-    $filtered = apply_filters( 'mk20_pdf_compress_gs_binary', '' );
-    if ( is_string( $filtered ) && '' !== $filtered ) {
-        $candidates[] = $filtered;
-    }
-
-    $candidates = array_merge(
-        $candidates,
-        array( 'gs', '/usr/bin/gs', '/usr/local/bin/gs', '/bin/gs', '/opt/homebrew/bin/gs', 'gswin64c.exe', 'gswin32c.exe' )
-    );
-
-    foreach ( (array) glob( 'C:\\Program Files\\gs\\gs*\\bin\\gswin64c.exe' ) as $windows_gs ) {
-        $candidates[] = $windows_gs;
-    }
-
-    $found = '';
-    foreach ( array_unique( array_filter( array_map( 'strval', $candidates ) ) ) as $binary ) {
-        if ( mk20_pdf_compress_gs_works( $binary ) ) {
-            $found = $binary;
+    foreach ( $diagnostics as $diagnostic ) {
+        if ( ! empty( $diagnostic['ok'] ) ) {
+            $found = $diagnostic['binary'];
             break;
         }
     }
 
     set_transient( 'mk20_gs_binary', $found, 12 * HOUR_IN_SECONDS );
+    set_transient( 'mk20_gs_diag', $diagnostics, 12 * HOUR_IN_SECONDS );
     $cached = $found;
 
     return $cached;
+}
+
+/**
+ * Devuelve el diagnóstico cacheado de la última comprobación de Ghostscript.
+ *
+ * @return array<int,array<string,mixed>>
+ */
+function mk20_pdf_gs_diagnostics() {
+    $diagnostics = get_transient( 'mk20_gs_diag' );
+
+    return is_array( $diagnostics ) ? $diagnostics : array();
 }
 
 /**

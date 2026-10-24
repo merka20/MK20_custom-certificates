@@ -170,6 +170,7 @@ class MK20_Admin {
         }
 
         delete_transient( 'mk20_gs_binary' );
+        delete_transient( 'mk20_gs_diag' );
 
         return $output;
     }
@@ -752,6 +753,73 @@ class MK20_Admin {
                                         echo '<p class="description" style="color:#d97706;">' . esc_html__( 'Ghostscript no disponible: la función PHP proc_open está deshabilitada. Los PDFs se guardarán sin comprimir.', 'mk20-custom-certificates' ) . '</p>';
                                     } elseif ( '' === $mk20_gs_binary ) {
                                         echo '<p class="description" style="color:#d97706;">' . esc_html__( 'Ghostscript no detectado. Los PDFs se guardarán sin comprimir. Instala gs o define MK20_GS_BINARY en wp-config.php.', 'mk20-custom-certificates' ) . '</p>';
+
+                                        $mk20_gs_diagnostics = mk20_pdf_gs_diagnostics();
+                                        if ( ! empty( $mk20_gs_diagnostics ) ) {
+                                            echo '<details style="margin-top:8px;">';
+                                            echo '<summary style="cursor:pointer; font-weight:600;">' . esc_html__( 'Ver diagnóstico', 'mk20-custom-certificates' ) . '</summary>';
+                                            echo '<table class="widefat striped" style="margin-top:8px; font-size:12px;">';
+                                            echo '<thead><tr><th>' . esc_html__( 'Comando probado', 'mk20-custom-certificates' ) . '</th><th>' . esc_html__( 'Resultado', 'mk20-custom-certificates' ) . '</th></tr></thead><tbody>';
+
+                                            foreach ( $mk20_gs_diagnostics as $mk20_diag ) {
+                                                $mk20_binary  = isset( $mk20_diag['binary'] ) ? (string) $mk20_diag['binary'] : '';
+                                                $mk20_exit    = isset( $mk20_diag['exit'] ) ? (int) $mk20_diag['exit'] : -1;
+                                                $mk20_stdout  = isset( $mk20_diag['stdout'] ) ? (string) $mk20_diag['stdout'] : '';
+                                                $mk20_stderr  = isset( $mk20_diag['stderr'] ) ? (string) $mk20_diag['stderr'] : '';
+                                                $mk20_timeout = ! empty( $mk20_diag['timed_out'] );
+                                                $mk20_launch  = ! empty( $mk20_diag['launch_failed'] );
+
+                                                if ( $mk20_timeout ) {
+                                                    $mk20_status = __( 'Sin respuesta en 3 s (timeout)', 'mk20-custom-certificates' );
+                                                } elseif ( $mk20_launch ) {
+                                                    $mk20_status = __( 'No se pudo ejecutar (no existe o sin permisos)', 'mk20-custom-certificates' );
+                                                } else {
+                                                    /* translators: %d: process exit code. */
+                                                    $mk20_status = sprintf( __( 'Código de salida: %d', 'mk20-custom-certificates' ), $mk20_exit );
+                                                }
+
+                                                $mk20_detail = '' !== $mk20_stderr ? $mk20_stderr : $mk20_stdout;
+                                                if ( function_exists( 'mb_substr' ) ) {
+                                                    $mk20_detail = mb_substr( $mk20_detail, 0, 300 );
+                                                } else {
+                                                    $mk20_detail = substr( $mk20_detail, 0, 300 );
+                                                }
+
+                                                echo '<tr><td><code>' . esc_html( $mk20_binary ) . '</code></td><td>' . esc_html( $mk20_status );
+                                                if ( '' !== $mk20_detail ) {
+                                                    echo '<br><code>' . esc_html( $mk20_detail ) . '</code>';
+                                                }
+                                                echo '</td></tr>';
+                                            }
+
+                                            echo '</tbody></table>';
+                                            echo '<p class="description">' . esc_html__( 'Si pone "No se pudo ejecutar", el binario no existe o PHP no tiene permiso para lanzarlo. Código 127 = no está en el PATH del usuario de PHP. Otros códigos suelen indicar permisos o librerías del sistema.', 'mk20-custom-certificates' ) . '</p>';
+
+                                            $mk20_php_user = '';
+                                            if ( function_exists( 'posix_geteuid' ) && function_exists( 'posix_getpwuid' ) ) {
+                                                $mk20_pw = posix_getpwuid( posix_geteuid() );
+                                                if ( is_array( $mk20_pw ) && isset( $mk20_pw['name'] ) ) {
+                                                    $mk20_php_user = (string) $mk20_pw['name'];
+                                                }
+                                            }
+
+                                            $mk20_env_path = getenv( 'PATH' );
+                                            $mk20_env_path = is_string( $mk20_env_path ) ? $mk20_env_path : '';
+
+                                            if ( '' !== $mk20_php_user || '' !== $mk20_env_path ) {
+                                                echo '<p class="description" style="margin-top:4px;">';
+                                                if ( '' !== $mk20_php_user ) {
+                                                    echo esc_html__( 'Usuario de PHP:', 'mk20-custom-certificates' ) . ' <code>' . esc_html( $mk20_php_user ) . '</code>';
+                                                }
+                                                if ( '' !== $mk20_env_path ) {
+                                                    echo( '' !== $mk20_php_user ? ' · ' : '' ) . esc_html__( 'PATH:', 'mk20-custom-certificates' ) . ' <code>' . esc_html( $mk20_env_path ) . '</code>';
+                                                }
+                                                echo '</p>';
+                                            }
+                                            echo '</details>';
+                                        } else {
+                                            echo '<p class="description">' . esc_html__( 'Pulsa "Volver a comprobar" para generar el diagnóstico.', 'mk20-custom-certificates' ) . '</p>';
+                                        }
                                     } else {
                                         /* translators: %s: Ghostscript executable path. */
                                         echo '<p class="description" style="color:#059669;">' . esc_html( sprintf( __( 'Ghostscript detectado: %s', 'mk20-custom-certificates' ), $mk20_gs_binary ) ) . '</p>';

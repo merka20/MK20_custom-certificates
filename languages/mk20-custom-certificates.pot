@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: MK20 Custom Certificates 1.4.9\n"
+"Project-Id-Version: MK20 Custom Certificates 1.4.10\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/mk20-custom-certificates\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-24T10:46:49+00:00\n"
+"POT-Creation-Date: 2026-10-24T11:16:04+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: mk20-custom-certificates\n"
@@ -46,7 +46,7 @@ msgstr ""
 
 #: includes/class-mk20-admin.php:46
 #: includes/class-mk20-admin.php:47
-#: includes/class-mk20-admin.php:939
+#: includes/class-mk20-admin.php:1007
 msgid "Todos los Certificados"
 msgstr ""
 
@@ -71,514 +71,556 @@ msgstr[1] ""
 msgid "Ver detalles"
 msgstr ""
 
-#: includes/class-mk20-admin.php:371
+#: includes/class-mk20-admin.php:372
 msgid "1. Plantillas de Fondo (JPG, A4 Landscape, 297x210 mm)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:372
+#: includes/class-mk20-admin.php:373
 msgid "Sube tus propios diseños o deja los campos vacíos para usar los fondos premium por defecto."
 msgstr ""
 
-#: includes/class-mk20-admin.php:377
+#: includes/class-mk20-admin.php:378
 msgid "Anverso (Cara 1)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:381
-#: includes/class-mk20-admin.php:394
-#: includes/class-mk20-admin.php:411
+#: includes/class-mk20-admin.php:382
+#: includes/class-mk20-admin.php:395
+#: includes/class-mk20-admin.php:412
 msgid "Seleccionar Imagen"
 msgstr ""
 
-#: includes/class-mk20-admin.php:383
-#: includes/class-mk20-admin.php:396
-#: includes/class-mk20-admin.php:413
+#: includes/class-mk20-admin.php:384
+#: includes/class-mk20-admin.php:397
+#: includes/class-mk20-admin.php:414
 msgid "Quitar"
 msgstr ""
 
-#: includes/class-mk20-admin.php:390
+#: includes/class-mk20-admin.php:391
 msgid "Reverso (Cara 2)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:405
+#: includes/class-mk20-admin.php:406
 msgid "Logo de la página de verificación"
 msgstr ""
 
-#: includes/class-mk20-admin.php:406
+#: includes/class-mk20-admin.php:407
 msgid "Imagen que se muestra al verificar un certificado. Si se deja vacía se usa el logo del tema o, en su defecto, el icono del sitio."
 msgstr ""
 
-#: includes/class-mk20-admin.php:421
+#: includes/class-mk20-admin.php:422
 msgid "2. Mapeo de Campos de Perfil de BuddyBoss"
 msgstr ""
 
-#: includes/class-mk20-admin.php:422
+#: includes/class-mk20-admin.php:423
 msgid "Define el nombre exacto de los campos de perfil (xprofile) personalizados en BuddyBoss."
 msgstr ""
 
-#: includes/class-mk20-admin.php:425
+#: includes/class-mk20-admin.php:426
 msgid "Campo DNI/NIE"
 msgstr ""
 
-#: includes/class-mk20-admin.php:429
+#: includes/class-mk20-admin.php:430
 msgid "Campo Nombre Empresa"
 msgstr ""
 
-#: includes/class-mk20-admin.php:433
+#: includes/class-mk20-admin.php:434
 msgid "Campo CIF Empresa"
 msgstr ""
 
-#: includes/class-mk20-admin.php:441
+#: includes/class-mk20-admin.php:442
 msgid "3. Valores Genéricos de Respaldo (si no están rellenos)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:442
+#: includes/class-mk20-admin.php:443
 msgid "Estos valores se imprimirán en el certificado si el alumno no los tiene definidos en su perfil o si el curso no tiene metadatos personalizados."
 msgstr ""
 
-#: includes/class-mk20-admin.php:445
+#: includes/class-mk20-admin.php:446
 msgid "DNI Genérico"
 msgstr ""
 
-#: includes/class-mk20-admin.php:449
+#: includes/class-mk20-admin.php:450
 msgid "Empresa Genérica"
 msgstr ""
 
-#: includes/class-mk20-admin.php:453
+#: includes/class-mk20-admin.php:454
 msgid "CIF Genérico"
 msgstr ""
 
-#: includes/class-mk20-admin.php:459
+#: includes/class-mk20-admin.php:460
 msgid "Código AF Genérico"
 msgstr ""
 
-#: includes/class-mk20-admin.php:463
+#: includes/class-mk20-admin.php:464
 msgid "Duración Genérica"
 msgstr ""
 
-#: includes/class-mk20-admin.php:467
+#: includes/class-mk20-admin.php:468
 msgid "Modalidad Genérica"
 msgstr ""
 
-#: includes/class-mk20-admin.php:473
+#: includes/class-mk20-admin.php:474
 msgid "Fecha Inicio Genérica"
 msgstr ""
 
-#: includes/class-mk20-admin.php:477
+#: includes/class-mk20-admin.php:478
 msgid "Fecha Fin Genérica"
 msgstr ""
 
-#: includes/class-mk20-admin.php:483
+#: includes/class-mk20-admin.php:484
 msgid "Contenidos del Curso Genéricos (Reverso)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:491
+#: includes/class-mk20-admin.php:492
 msgid "4. Línea del Alumno y DNI (Anverso - Cara 1)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:492
+#: includes/class-mk20-admin.php:493
 msgid "Configura la posición y formato del texto: \"D./DÑA. [Nombre] CON DNI/NIE [DNI]\""
 msgstr ""
 
-#: includes/class-mk20-admin.php:495
-#: includes/class-mk20-admin.php:525
-#: includes/class-mk20-admin.php:555
-#: includes/class-mk20-admin.php:649
-#: includes/class-mk20-admin.php:678
+#: includes/class-mk20-admin.php:496
+#: includes/class-mk20-admin.php:526
+#: includes/class-mk20-admin.php:556
+#: includes/class-mk20-admin.php:650
+#: includes/class-mk20-admin.php:679
 msgid "Coordenada X (mm)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:499
-#: includes/class-mk20-admin.php:529
-#: includes/class-mk20-admin.php:559
-#: includes/class-mk20-admin.php:653
-#: includes/class-mk20-admin.php:682
+#: includes/class-mk20-admin.php:500
+#: includes/class-mk20-admin.php:530
+#: includes/class-mk20-admin.php:560
+#: includes/class-mk20-admin.php:654
+#: includes/class-mk20-admin.php:683
 msgid "Coordenada Y (mm)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:503
-#: includes/class-mk20-admin.php:533
-#: includes/class-mk20-admin.php:563
-#: includes/class-mk20-admin.php:603
-#: includes/class-mk20-admin.php:633
-#: includes/class-mk20-admin.php:657
-#: includes/class-mk20-admin.php:686
+#: includes/class-mk20-admin.php:504
+#: includes/class-mk20-admin.php:534
+#: includes/class-mk20-admin.php:564
+#: includes/class-mk20-admin.php:604
+#: includes/class-mk20-admin.php:634
+#: includes/class-mk20-admin.php:658
+#: includes/class-mk20-admin.php:687
 msgid "Tamaño de Fuente (pt)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:507
-#: includes/class-mk20-admin.php:537
-#: includes/class-mk20-admin.php:567
-#: includes/class-mk20-admin.php:661
-#: includes/class-mk20-admin.php:690
+#: includes/class-mk20-admin.php:508
+#: includes/class-mk20-admin.php:538
+#: includes/class-mk20-admin.php:568
+#: includes/class-mk20-admin.php:662
+#: includes/class-mk20-admin.php:691
 msgid "Color (HEX)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:513
-#: includes/class-mk20-admin.php:543
-#: includes/class-mk20-admin.php:573
-#: includes/class-mk20-admin.php:667
-#: includes/class-mk20-admin.php:696
+#: includes/class-mk20-admin.php:514
+#: includes/class-mk20-admin.php:544
+#: includes/class-mk20-admin.php:574
+#: includes/class-mk20-admin.php:668
+#: includes/class-mk20-admin.php:697
 msgid "Centrar"
 msgstr ""
 
-#: includes/class-mk20-admin.php:521
+#: includes/class-mk20-admin.php:522
 msgid "5. Línea de la Empresa y CIF (Anverso - Cara 1)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:522
+#: includes/class-mk20-admin.php:523
 msgid "Configura la posición y formato del texto: \"[Empresa] CON CIF [CIF]\""
 msgstr ""
 
-#: includes/class-mk20-admin.php:551
+#: includes/class-mk20-admin.php:552
 msgid "6. Acción Formativa / Título del Curso (Anverso - Cara 1)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:552
+#: includes/class-mk20-admin.php:553
 msgid "Configura la posición y formato del título del curso en el anverso."
 msgstr ""
 
-#: includes/class-mk20-admin.php:581
+#: includes/class-mk20-admin.php:582
 msgid "7. Huecos de Código AF y Fechas (Anverso - Cara 1)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:582
+#: includes/class-mk20-admin.php:583
 msgid "Define las posiciones X para colocar los valores sobre los huecos en la línea: \"Código AF/ Grupo [X1] durante los días [X2] al [X3]\""
 msgstr ""
 
-#: includes/class-mk20-admin.php:585
-#: includes/class-mk20-admin.php:619
+#: includes/class-mk20-admin.php:586
+#: includes/class-mk20-admin.php:620
 msgid "Coordenada Y (Línea) (mm)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:589
+#: includes/class-mk20-admin.php:590
 msgid "Código AF Posición X (mm)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:593
+#: includes/class-mk20-admin.php:594
 msgid "Fecha Inicio Posición X (mm)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:597
+#: includes/class-mk20-admin.php:598
 msgid "Fecha Fin Posición X (mm)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:607
-#: includes/class-mk20-admin.php:637
+#: includes/class-mk20-admin.php:608
+#: includes/class-mk20-admin.php:638
 msgid "Color Fuente (HEX)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:615
+#: includes/class-mk20-admin.php:616
 msgid "8. Huecos de Duración y Modalidad (Anverso - Cara 1)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:616
+#: includes/class-mk20-admin.php:617
 msgid "Define las posiciones X para colocar los valores sobre los huecos en la línea: \"Con una duración total de [X1], en la modalidad formativa [X2]\""
 msgstr ""
 
-#: includes/class-mk20-admin.php:623
+#: includes/class-mk20-admin.php:624
 msgid "Duración Posición X (mm)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:627
+#: includes/class-mk20-admin.php:628
 msgid "Modalidad Posición X (mm)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:645
+#: includes/class-mk20-admin.php:646
 msgid "9. Fecha de Expedición (Anverso - Cara 1)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:646
+#: includes/class-mk20-admin.php:647
 msgid "Configura la posición y formato de la fecha de expedición que se muestra abajo al centro."
 msgstr ""
 
-#: includes/class-mk20-admin.php:675
+#: includes/class-mk20-admin.php:676
 msgid "10. Contenidos del Curso (Reverso - Cara 2)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:704
+#: includes/class-mk20-admin.php:705
 msgid "11. Integración API LaresFormación"
 msgstr ""
 
-#: includes/class-mk20-admin.php:705
+#: includes/class-mk20-admin.php:706
 msgid "Sincroniza los diplomas de formación presencial desde la plataforma externa usando el DNI del perfil de BuddyBoss. El usuario y la contraseña de la API deben definirse en wp-config.php (constantes MK20_LARES_API_USER y MK20_LARES_API_PASS) y nunca se guardan en la base de datos."
 msgstr ""
 
-#: includes/class-mk20-admin.php:707
+#: includes/class-mk20-admin.php:708
 msgid "✓ Integración configurada y activada."
 msgstr ""
 
-#: includes/class-mk20-admin.php:709
+#: includes/class-mk20-admin.php:710
 msgid "⚠ Integración pendiente de configurar (URL base y credenciales reales en wp-config.php)."
 msgstr ""
 
-#: includes/class-mk20-admin.php:715
+#: includes/class-mk20-admin.php:716
 msgid "Activar sincronización"
 msgstr ""
 
-#: includes/class-mk20-admin.php:719
+#: includes/class-mk20-admin.php:720
 msgid "URL base de la API (opcional si está en wp-config.php)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:723
+#: includes/class-mk20-admin.php:724
 msgid "Caché de sincronización (segundos, mín. 300)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:729
+#: includes/class-mk20-admin.php:730
 msgid "Forzar sincronización (ignorar caché)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:731
+#: includes/class-mk20-admin.php:732
 msgid "Si está marcado, cada visita al perfil llama a la API sin respetar la caché. Úsalo solo para pruebas y desmárcalo después."
 msgstr ""
 
-#: includes/class-mk20-admin.php:736
+#: includes/class-mk20-admin.php:737
 msgid "Comprimir PDFs descargados de Lares"
 msgstr ""
 
-#: includes/class-mk20-admin.php:738
+#: includes/class-mk20-admin.php:739
 msgid "Reduce el peso antes de guardarlos. Requiere Ghostscript (gs) en el servidor; si no está disponible, se guarda el PDF original."
 msgstr ""
 
-#: includes/class-mk20-admin.php:741
+#: includes/class-mk20-admin.php:742
 msgid "Calidad de compresión"
 msgstr ""
 
-#: includes/class-mk20-admin.php:743
+#: includes/class-mk20-admin.php:744
 msgid "Estándar · 150 ppp (recomendado)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:744
+#: includes/class-mk20-admin.php:745
 msgid "Impresión · 300 ppp (menos compresión)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:745
+#: includes/class-mk20-admin.php:746
 msgid "Pantalla · 72 ppp (máxima compresión)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:752
+#: includes/class-mk20-admin.php:753
 msgid "Ghostscript no disponible: la función PHP proc_open está deshabilitada. Los PDFs se guardarán sin comprimir."
 msgstr ""
 
-#: includes/class-mk20-admin.php:754
+#: includes/class-mk20-admin.php:755
 msgid "Ghostscript no detectado. Los PDFs se guardarán sin comprimir. Instala gs o define MK20_GS_BINARY en wp-config.php."
 msgstr ""
 
+#: includes/class-mk20-admin.php:760
+msgid "Ver diagnóstico"
+msgstr ""
+
+#: includes/class-mk20-admin.php:762
+msgid "Comando probado"
+msgstr ""
+
+#: includes/class-mk20-admin.php:762
+msgid "Resultado"
+msgstr ""
+
+#: includes/class-mk20-admin.php:773
+msgid "Sin respuesta en 3 s (timeout)"
+msgstr ""
+
+#: includes/class-mk20-admin.php:775
+msgid "No se pudo ejecutar (no existe o sin permisos)"
+msgstr ""
+
+#. translators: %d: process exit code.
+#: includes/class-mk20-admin.php:778
+#, php-format
+msgid "Código de salida: %d"
+msgstr ""
+
+#: includes/class-mk20-admin.php:796
+msgid "Si pone \"No se pudo ejecutar\", el binario no existe o PHP no tiene permiso para lanzarlo. Código 127 = no está en el PATH del usuario de PHP. Otros códigos suelen indicar permisos o librerías del sistema."
+msgstr ""
+
+#: includes/class-mk20-admin.php:812
+msgid "Usuario de PHP:"
+msgstr ""
+
+#: includes/class-mk20-admin.php:815
+msgid "PATH:"
+msgstr ""
+
+#: includes/class-mk20-admin.php:821
+msgid "Pulsa \"Volver a comprobar\" para generar el diagnóstico."
+msgstr ""
+
 #. translators: %s: Ghostscript executable path.
-#: includes/class-mk20-admin.php:757
+#: includes/class-mk20-admin.php:825
 #, php-format
 msgid "Ghostscript detectado: %s"
 msgstr ""
 
-#: includes/class-mk20-admin.php:762
+#: includes/class-mk20-admin.php:830
 msgid "Volver a comprobar"
 msgstr ""
 
-#: includes/class-mk20-admin.php:769
+#: includes/class-mk20-admin.php:837
 msgid "Guardar Configuración"
 msgstr ""
 
-#: includes/class-mk20-admin.php:775
+#: includes/class-mk20-admin.php:843
 msgid "Instrucciones de Uso"
 msgstr ""
 
-#: includes/class-mk20-admin.php:776
+#: includes/class-mk20-admin.php:844
 msgid "Este plugin genera automáticamente un certificado de dos caras cuando un estudiante completa un curso de LearnDash."
 msgstr ""
 
-#: includes/class-mk20-admin.php:777
+#: includes/class-mk20-admin.php:845
 msgid "Coordenadas en mm:"
 msgstr ""
 
-#: includes/class-mk20-admin.php:778
+#: includes/class-mk20-admin.php:846
 msgid "El lienzo tiene dimensiones A4 apaisado: 297 mm de ancho por 210 mm de alto."
 msgstr ""
 
-#: includes/class-mk20-admin.php:779
+#: includes/class-mk20-admin.php:847
 msgid "Por ejemplo, para centrar horizontalmente de forma exacta, puedes marcar el checkbox correspondiente, o ingresar 148.5 en la coordenada X."
 msgstr ""
 
-#: includes/class-mk20-admin.php:780
+#: includes/class-mk20-admin.php:848
 msgid "Soporte de Caracteres:"
 msgstr ""
 
-#: includes/class-mk20-admin.php:781
+#: includes/class-mk20-admin.php:849
 msgid "El plugin cuenta con traducción automática de caracteres UTF-8 (tildes, eñes) para evitar errores de renderizado de texto en FPDF."
 msgstr ""
 
-#: includes/class-mk20-admin.php:790
+#: includes/class-mk20-admin.php:858
 msgid "Certificados Rechazados"
 msgstr ""
 
-#: includes/class-mk20-admin.php:793
-#: includes/class-mk20-admin.php:957
+#: includes/class-mk20-admin.php:861
+#: includes/class-mk20-admin.php:1025
 msgid "Usuario"
 msgstr ""
 
-#: includes/class-mk20-admin.php:794
-#: includes/class-mk20-admin.php:958
-#: mk20-custom-certificates.php:656
+#: includes/class-mk20-admin.php:862
+#: includes/class-mk20-admin.php:1026
+#: mk20-custom-certificates.php:657
 msgid "Curso"
 msgstr ""
 
-#: includes/class-mk20-admin.php:795
+#: includes/class-mk20-admin.php:863
 msgid "Motivo"
 msgstr ""
 
-#: includes/class-mk20-admin.php:806
+#: includes/class-mk20-admin.php:874
 msgid "Estos certificados no se mostraron a los alumnos."
 msgstr ""
 
-#: includes/class-mk20-admin.php:807
+#: includes/class-mk20-admin.php:875
 msgid "Descartar"
 msgstr ""
 
-#: includes/class-mk20-admin.php:813
+#: includes/class-mk20-admin.php:881
 msgid "Vista Previa del Certificado"
 msgstr ""
 
-#: includes/class-mk20-admin.php:814
+#: includes/class-mk20-admin.php:882
 msgid "Genera un certificado de muestra (PDF de 2 páginas) con los ajustes actuales para validar las posiciones y colores en tiempo real."
 msgstr ""
 
-#: includes/class-mk20-admin.php:817
+#: includes/class-mk20-admin.php:885
 msgid "👁️ Ver PDF de Prueba"
 msgstr ""
 
-#: includes/class-mk20-admin.php:823
+#: includes/class-mk20-admin.php:891
 msgid "Protección de Datos"
 msgstr ""
 
-#: includes/class-mk20-admin.php:826
+#: includes/class-mk20-admin.php:894
 msgid "Conservar datos al desinstalar"
 msgstr ""
 
-#: includes/class-mk20-admin.php:829
+#: includes/class-mk20-admin.php:897
 msgid "Si está marcado, los certificados generados y sus metadatos se conservarán aunque desactives y elimines el plugin."
 msgstr ""
 
-#: includes/class-mk20-admin.php:834
+#: includes/class-mk20-admin.php:902
 msgid "Restaurar Valores"
 msgstr ""
 
-#: includes/class-mk20-admin.php:835
+#: includes/class-mk20-admin.php:903
 msgid "Vuelve a los valores de posición, tamaño y color que trae el plugin por defecto."
 msgstr ""
 
-#: includes/class-mk20-admin.php:840
+#: includes/class-mk20-admin.php:908
 msgid "¿Restaurar valores por defecto? Se perderán tus cambios personalizados."
 msgstr ""
 
-#: includes/class-mk20-admin.php:841
+#: includes/class-mk20-admin.php:909
 msgid "↺ Restaurar por defecto"
 msgstr ""
 
-#: includes/class-mk20-admin.php:860
+#: includes/class-mk20-admin.php:928
 msgid "Seleccionar imagen de plantilla"
 msgstr ""
 
-#: includes/class-mk20-admin.php:862
+#: includes/class-mk20-admin.php:930
 msgid "Usar esta imagen"
 msgstr ""
 
-#: includes/class-mk20-admin.php:885
+#: includes/class-mk20-admin.php:953
 msgid "No tienes permisos suficientes."
 msgstr ""
 
-#: includes/class-mk20-admin.php:940
+#: includes/class-mk20-admin.php:1008
 msgid "Listado completo de certificados generados por el plugin en todos los usuarios."
 msgstr ""
 
-#: includes/class-mk20-admin.php:943
+#: includes/class-mk20-admin.php:1011
 msgid "No hay certificados generados aún."
 msgstr ""
 
-#: includes/class-mk20-admin.php:956
+#: includes/class-mk20-admin.php:1024
 msgid "ID"
 msgstr ""
 
-#: includes/class-mk20-admin.php:959
+#: includes/class-mk20-admin.php:1027
 msgid "Tipo"
 msgstr ""
 
-#: includes/class-mk20-admin.php:960
+#: includes/class-mk20-admin.php:1028
 msgid "Fecha"
 msgstr ""
 
-#: includes/class-mk20-admin.php:961
-#: mk20-custom-certificates.php:658
+#: includes/class-mk20-admin.php:1029
+#: mk20-custom-certificates.php:659
 msgid "Descargar"
 msgstr ""
 
-#: includes/class-mk20-admin.php:962
-#: includes/class-mk20-admin.php:1019
+#: includes/class-mk20-admin.php:1030
+#: includes/class-mk20-admin.php:1087
 msgid "Eliminar"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1004
+#: includes/class-mk20-admin.php:1072
 msgid "Externo"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1004
+#: includes/class-mk20-admin.php:1072
 msgid "Online"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1008
+#: includes/class-mk20-admin.php:1076
 msgid "PDF"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1018
+#: includes/class-mk20-admin.php:1086
 msgid "¿Eliminar este certificado permanentemente?"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1065
+#: includes/class-mk20-admin.php:1133
 msgid "No tienes permisos suficientes para acceder a esta página."
 msgstr ""
 
-#: includes/class-mk20-admin.php:1119
+#: includes/class-mk20-admin.php:1187
 msgid "Error al generar la vista previa del PDF. Comprueba los permisos de escritura o la disponibilidad de FPDF."
 msgstr ""
 
-#: includes/class-mk20-admin.php:1129
+#: includes/class-mk20-admin.php:1197
 msgid "Datos para Certificado (MK20)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1190
+#: includes/class-mk20-admin.php:1258
 msgid "No generar certificado MK20 al completar este curso"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1193
+#: includes/class-mk20-admin.php:1261
 msgid "Déjalo desmarcado para que el curso emita certificado como siempre. Si lo marcas, al completar el curso no se generará ningún certificado MK20 ni aparecerá el aviso en la página del curso."
 msgstr ""
 
-#: includes/class-mk20-admin.php:1198
+#: includes/class-mk20-admin.php:1266
 msgid "Código AF / Grupo"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1202
+#: includes/class-mk20-admin.php:1270
 msgid "Fecha de Inicio"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1206
+#: includes/class-mk20-admin.php:1274
 msgid "Fecha de Fin"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1210
+#: includes/class-mk20-admin.php:1278
 msgid "Duración (Horas)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1214
+#: includes/class-mk20-admin.php:1282
 msgid "Modalidad Formativa"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1219
+#: includes/class-mk20-admin.php:1287
 msgid "Contenidos del Curso (Reverso)"
 msgstr ""
 
-#: includes/class-mk20-admin.php:1223
+#: includes/class-mk20-admin.php:1291
 msgid "Estos valores sobrescribirán los datos genéricos del certificado para este curso en particular."
 msgstr ""
 
-#: includes/class-mk20-admin.php:1226
+#: includes/class-mk20-admin.php:1294
 msgid "En los certificados nativos, las fechas de inicio y fin se recalculan automáticamente desde LearnDash. Estos valores solo se usan si LearnDash no tiene datos del alumno."
 msgstr ""
 
@@ -656,7 +698,7 @@ msgid "No puedes sincronizar los certificados de este usuario."
 msgstr ""
 
 #. translators: %d: identificador de la formación en Lares.
-#: includes/helpers.php:1128
+#: includes/helpers.php:1176
 #, php-format
 msgid "Formación Lares %d"
 msgstr ""
@@ -668,121 +710,121 @@ msgid "MK20 Custom Certificates: La librería FPDF está desactualizada (v%1$s).
 msgstr ""
 
 #: mk20-custom-certificates.php:305
-#: mk20-custom-certificates.php:318
-#: mk20-custom-certificates.php:427
+#: mk20-custom-certificates.php:319
+#: mk20-custom-certificates.php:428
 msgid "No tienes permiso para realizar esta acción."
 msgstr ""
 
-#: mk20-custom-certificates.php:321
-#: mk20-custom-certificates.php:431
-#: mk20-custom-certificates.php:451
-#: mk20-custom-certificates.php:504
+#: mk20-custom-certificates.php:322
+#: mk20-custom-certificates.php:432
+#: mk20-custom-certificates.php:452
+#: mk20-custom-certificates.php:505
 msgid "Enlace inválido o expirado."
 msgstr ""
 
-#: mk20-custom-certificates.php:435
+#: mk20-custom-certificates.php:436
 msgid "Ajustes restaurados a los valores por defecto."
 msgstr ""
 
-#: mk20-custom-certificates.php:447
+#: mk20-custom-certificates.php:448
 msgid "Curso no especificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:456
-#: mk20-custom-certificates.php:509
+#: mk20-custom-certificates.php:457
+#: mk20-custom-certificates.php:510
 msgid "Debes iniciar sesión para descargar tu certificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:465
+#: mk20-custom-certificates.php:466
 msgid "El certificado no está disponible. Completa el curso primero."
 msgstr ""
 
-#: mk20-custom-certificates.php:480
-#: mk20-custom-certificates.php:533
+#: mk20-custom-certificates.php:481
+#: mk20-custom-certificates.php:534
 msgid "Error al leer el certificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:500
+#: mk20-custom-certificates.php:501
 msgid "Certificado no especificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:518
+#: mk20-custom-certificates.php:519
 msgid "El certificado no está disponible."
 msgstr ""
 
-#: mk20-custom-certificates.php:562
+#: mk20-custom-certificates.php:563
 msgid "Mis Certificados"
 msgstr ""
 
-#: mk20-custom-certificates.php:585
-#: mk20-custom-certificates.php:923
+#: mk20-custom-certificates.php:586
+#: mk20-custom-certificates.php:924
 msgid "Certificado eliminado correctamente."
 msgstr ""
 
-#: mk20-custom-certificates.php:590
+#: mk20-custom-certificates.php:591
 msgid "Este usuario no tiene certificados visibles."
 msgstr ""
 
-#: mk20-custom-certificates.php:601
-#: mk20-custom-certificates.php:835
+#: mk20-custom-certificates.php:602
+#: mk20-custom-certificates.php:836
 msgid "Buscando nuevos certificados…"
 msgstr ""
 
-#: mk20-custom-certificates.php:635
+#: mk20-custom-certificates.php:636
 msgid "Aún no tienes certificados. Completa un curso para obtener tu primer certificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:657
+#: mk20-custom-certificates.php:658
 msgid "Fecha de emisión"
 msgstr ""
 
-#: mk20-custom-certificates.php:688
+#: mk20-custom-certificates.php:689
 msgid "Descargar PDF"
 msgstr ""
 
-#: mk20-custom-certificates.php:704
+#: mk20-custom-certificates.php:705
 msgid "« Anterior"
 msgstr ""
 
-#: mk20-custom-certificates.php:705
+#: mk20-custom-certificates.php:706
 msgid "Siguiente »"
 msgstr ""
 
-#: mk20-custom-certificates.php:711
+#: mk20-custom-certificates.php:712
 msgid "Paginación de certificados"
 msgstr ""
 
-#: mk20-custom-certificates.php:836
+#: mk20-custom-certificates.php:837
 msgid "Certificados actualizados."
 msgstr ""
 
-#: mk20-custom-certificates.php:837
+#: mk20-custom-certificates.php:838
 msgid "Recargando…"
 msgstr ""
 
-#: mk20-custom-certificates.php:838
+#: mk20-custom-certificates.php:839
 msgid "No se pudieron comprobar los certificados. Se reintentará automáticamente."
 msgstr ""
 
-#: mk20-custom-certificates.php:887
-#: mk20-custom-certificates.php:932
+#: mk20-custom-certificates.php:888
+#: mk20-custom-certificates.php:933
 msgid "No tienes permisos para realizar esta acción."
 msgstr ""
 
-#: mk20-custom-certificates.php:892
+#: mk20-custom-certificates.php:893
 msgid "ID de curso inválido."
 msgstr ""
 
-#: mk20-custom-certificates.php:897
-#: mk20-custom-certificates.php:942
+#: mk20-custom-certificates.php:898
+#: mk20-custom-certificates.php:943
 msgid "Nonce inválido."
 msgstr ""
 
-#: mk20-custom-certificates.php:902
-#: mk20-custom-certificates.php:950
+#: mk20-custom-certificates.php:903
+#: mk20-custom-certificates.php:951
 msgid "Usuario no especificado."
 msgstr ""
 
-#: mk20-custom-certificates.php:937
+#: mk20-custom-certificates.php:938
 msgid "Hash de certificado inválido."
 msgstr ""
