@@ -140,11 +140,6 @@ class MK20_Admin {
         $output['lares_api_base'] = isset( $input['lares_api_base'] ) ? esc_url_raw( $input['lares_api_base'] ) : $defaults['lares_api_base'];
         $output['lares_sync_ttl'] = isset( $input['lares_sync_ttl'] ) ? max( 300, absint( $input['lares_sync_ttl'] ) ) : $defaults['lares_sync_ttl'];
 
-        $output['lares_pdf_quality'] = isset( $input['lares_pdf_quality'] ) ? sanitize_key( $input['lares_pdf_quality'] ) : $defaults['lares_pdf_quality'];
-        if ( ! in_array( $output['lares_pdf_quality'], [ 'screen', 'ebook', 'printer' ], true ) ) {
-            $output['lares_pdf_quality'] = $defaults['lares_pdf_quality'];
-        }
-
         // Coordenadas X / Y (float)
         $float_fields = [ 'name_x', 'name_y', 'company_line_x', 'company_line_y', 'front_course_x', 'front_course_y', 'details_y', 'code_x', 'start_date_x', 'end_date_x', 'duration_y', 'duration_x', 'modality_x', 'date_x', 'date_y', 'contents_x', 'contents_y' ];
         foreach ( $float_fields as $f ) {
@@ -164,12 +159,10 @@ class MK20_Admin {
         }
 
         // Checkboxes (centrar) — 1 si está marcado, 0 si no
-        $cb_fields = [ 'name_center', 'company_line_center', 'front_course_center', 'date_center', 'contents_center', 'keep_data_on_uninstall', 'lares_enabled', 'lares_force_sync', 'lares_compress_pdf' ];
+        $cb_fields = [ 'name_center', 'company_line_center', 'front_course_center', 'date_center', 'contents_center', 'keep_data_on_uninstall', 'lares_enabled', 'lares_force_sync' ];
         foreach ( $cb_fields as $f ) {
             $output[ $f ] = isset( $input[ $f ] ) ? 1 : 0;
         }
-
-        delete_transient( 'mk20_gs_binary' );
 
         return $output;
     }
@@ -729,34 +722,6 @@ class MK20_Admin {
                                         <?php esc_html_e( 'Forzar sincronización (ignorar caché)', 'mk20-custom-certificates' ); ?>
                                     </label>
                                     <p class="description"><?php esc_html_e( 'Si está marcado, cada visita al perfil llama a la API sin respetar la caché. Úsalo solo para pruebas y desmárcalo después.', 'mk20-custom-certificates' ); ?></p>
-                                </div>
-                                <div class="mk20-field-group">
-                                    <label class="align-checkbox-label" style="margin-top:0;">
-                                        <input type="checkbox" name="mk20_cert_settings[lares_compress_pdf]" value="1" <?php checked( ! empty( $settings['lares_compress_pdf'] ) ); ?>>
-                                        <?php esc_html_e( 'Comprimir PDFs descargados de Lares', 'mk20-custom-certificates' ); ?>
-                                    </label>
-                                    <p class="description"><?php esc_html_e( 'Reduce el peso antes de guardarlos. Requiere Ghostscript (gs) en el servidor; si no está disponible, se guarda el PDF original.', 'mk20-custom-certificates' ); ?></p>
-                                </div>
-                                <div class="mk20-field-group">
-                                    <label for="mk20-lares-pdf-quality"><?php esc_html_e( 'Calidad de compresión', 'mk20-custom-certificates' ); ?></label>
-                                    <select id="mk20-lares-pdf-quality" name="mk20_cert_settings[lares_pdf_quality]">
-                                        <option value="ebook" <?php selected( $settings['lares_pdf_quality'], 'ebook' ); ?>><?php esc_html_e( 'Estándar · 150 ppp (recomendado)', 'mk20-custom-certificates' ); ?></option>
-                                        <option value="printer" <?php selected( $settings['lares_pdf_quality'], 'printer' ); ?>><?php esc_html_e( 'Impresión · 300 ppp (menos compresión)', 'mk20-custom-certificates' ); ?></option>
-                                        <option value="screen" <?php selected( $settings['lares_pdf_quality'], 'screen' ); ?>><?php esc_html_e( 'Pantalla · 72 ppp (máxima compresión)', 'mk20-custom-certificates' ); ?></option>
-                                    </select>
-                                </div>
-                                <div class="mk20-field-group">
-                                    <?php
-                                    $mk20_gs_binary = mk20_pdf_compress_gs_binary();
-                                    if ( ! function_exists( 'proc_open' ) ) {
-                                        echo '<p class="description" style="color:#d97706;">' . esc_html__( 'Ghostscript no disponible: la función PHP proc_open está deshabilitada. Los PDFs se guardarán sin comprimir.', 'mk20-custom-certificates' ) . '</p>';
-                                    } elseif ( '' === $mk20_gs_binary ) {
-                                        echo '<p class="description" style="color:#d97706;">' . esc_html__( 'Ghostscript no detectado. Los PDFs se guardarán sin comprimir. Instala gs o define MK20_GS_BINARY en wp-config.php.', 'mk20-custom-certificates' ) . '</p>';
-                                    } else {
-                                        /* translators: %s: Ghostscript executable path. */
-                                        echo '<p class="description" style="color:#059669;">' . esc_html( sprintf( __( 'Ghostscript detectado: %s', 'mk20-custom-certificates' ), $mk20_gs_binary ) ) . '</p>';
-                                    }
-                                    ?>
                                 </div>
                             </div>
                         </div>

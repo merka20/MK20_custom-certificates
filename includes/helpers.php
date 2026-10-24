@@ -334,8 +334,6 @@ function mk20_get_default_settings() {
         'lares_api_base'     => '',
         'lares_sync_ttl'     => 21600, // 6 horas en segundos.
         'lares_force_sync'   => 0, // 1 = ignorar caché y llamar siempre a la API.
-        'lares_compress_pdf' => 1, // 1 = comprimir PDFs externos si Ghostscript está disponible.
-        'lares_pdf_quality'  => 'ebook', // screen | ebook | printer.
     ];
 }
 
@@ -427,7 +425,6 @@ function mk20_pdf_run_process( $command, $timeout = 20 ) {
         2 => array( 'pipe', 'w' ),
     );
 
-    // phpcs:ignore Generic.PHP.ForbiddenFunctions.Found,WordPress.PHP.DiscouragedPHPFunctions.system_calls_proc_open -- Necesario para invocar Ghostscript; el comando se pasa como array, sin shell.
     $process = @proc_open( $command, $descriptors, $pipes );
     if ( ! is_resource( $process ) ) {
         return $result;
@@ -484,207 +481,8 @@ function mk20_pdf_run_process( $command, $timeout = 20 ) {
 
     return $result;
 }
-
-/**
- * Comprueba si un binario de Ghostscript responde a --version.
- *
- * @param string $binary Ruta o nombre del binario.
- * @return bool
- */
-function mk20_pdf_compress_gs_works( $binary ) {
-    if ( ! is_string( $binary ) || '' === $binary ) {
-        return false;
-    }
-
-    $result = mk20_pdf_run_process( array( $binary, '--version' ), 3 );
-
-    return ! empty( $result['ok'] ) && '' !== trim( $result['stdout'] );
-}
-
-/**
- * Devuelve el binario de Ghostscript disponible, o cadena vacía.
- *
- * Prioridad: constante MK20_GS_BINARY > filtro > candidatos habituales.
- * El resultado se cachea 12 horas en un transient.
- *
- * @return string
- */
-function mk20_pdf_compress_gs_binary() {
-    static $cached = null;
-
-    if ( null !== $cached ) {
-        return $cached;
-    }
-
-    if ( ! function_exists( 'proc_open' ) ) {
-        $cached = '';
-        return $cached;
-    }
-
-    $transient = get_transient( 'mk20_gs_binary' );
-    if ( false !== $transient ) {
-        $cached = is_string( $transient ) ? $transient : '';
-        return $cached;
-    }
-
-    $candidates = array();
-
-    if ( defined( 'MK20_GS_BINARY' ) && is_string( MK20_GS_BINARY ) && '' !== MK20_GS_BINARY ) {
-        $candidates[] = MK20_GS_BINARY;
-    }
-
-    $filtered = apply_filters( 'mk20_pdf_compress_gs_binary', '' );
-    if ( is_string( $filtered ) && '' !== $filtered ) {
-        $candidates[] = $filtered;
-    }
-
-    $candidates = array_merge(
-        $candidates,
-        array( 'gs', '/usr/bin/gs', '/usr/local/bin/gs', '/bin/gs', '/opt/homebrew/bin/gs', 'gswin64c.exe', 'gswin32c.exe' )
-    );
-
-    foreach ( (array) glob( 'C:\\Program Files\\gs\\gs*\\bin\\gswin64c.exe' ) as $windows_gs ) {
-        $candidates[] = $windows_gs;
-    }
-
-    $found = '';
-    foreach ( array_unique( array_filter( array_map( 'strval', $candidates ) ) ) as $binary ) {
-        if ( mk20_pdf_compress_gs_works( $binary ) ) {
-            $found = $binary;
-            break;
-        }
-    }
-
-    set_transient( 'mk20_gs_binary', $found, 12 * HOUR_IN_SECONDS );
-    $cached = $found;
-
-    return $cached;
-}
-
-/**
- * Comprime un PDF externo con Ghostscript si está disponible.
- *
- * Si no hay Ghostscript, falla la ejecución o la salida no es válida,
- * devuelve el contenido original sin interrumpir la importación.
- *
- * @param string     $pdf_content Contenido binario del PDF.
- * @param array|null $settings    Ajustes del plugin (opcional).
- * @return string Contenido comprimido o el original.
- */
-function mk20_compress_pdf_content( $pdf_content, $settings = null ) {
-    if ( ! is_string( $pdf_content ) || '' === $pdf_content || substr( $pdf_content, 0, 4 ) !== '%PDF' ) {
-        return $pdf_content;
-    }
-
-    if ( null === $settings ) {
-        $settings = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
-    }
-
-    if ( empty( $settings['lares_compress_pdf'] ) ) {
-        return $pdf_content;
-    }
-
-    $quality = isset( $settings['lares_pdf_quality'] ) ? (string) $settings['lares_pdf_quality'] : 'ebook';
-    if ( ! in_array( $quality, array( 'screen', 'ebook', 'printer' ), true ) ) {
-        $quality = 'ebook';
-    }
-
-    $gs_binary = mk20_pdf_compress_gs_binary();
-    if ( '' === $gs_binary ) {
-        mk20_api_audit_log( 'IMPORT_PDF_COMPRESS_SKIP motivo=ghostscript_no_disponible' );
-        return $pdf_content;
-    }
-
-    $temp_dir = get_temp_dir();
-    $tmp_in   = $temp_dir . wp_unique_filename( $temp_dir, 'mk20-pdf-in.pdf' );
-    $tmp_out  = $temp_dir . wp_unique_filename( $temp_dir, 'mk20-pdf-out.pdf' );
-
-    $written = file_put_contents( $tmp_in, $pdf_content );
-    if ( false === $written ) {
-        wp_delete_file( $tmp_in );
-        mk20_api_audit_log( 'IMPORT_PDF_COMPRESS_SKIP motivo=error_temporal' );
-        return $pdf_content;
-    }
-
-    $command = array(
-        $gs_binary,
-        '-q',
-        '-dNOPAUSE',
-        '-dBATCH',
-        '-dSAFER',
-        '-sDEVICE=pdfwrite',
-        '-dCompatibilityLevel=1.4',
-        '-dPDFSETTINGS=/' . $quality,
-        '-dEmbedAllFonts=true',
-        '-dSubsetFonts=true',
-        '-dAutoRotatePages=/None',
-        '-sOutputFile=' . $tmp_out,
-        $tmp_in,
-    );
-
-    $result = mk20_pdf_run_process( $command, 20 );
-
-    wp_delete_file( $tmp_in );
-
-    $compressed = '';
-    if ( ! empty( $result['ok'] ) && file_exists( $tmp_out ) ) {
-        $compressed = (string) file_get_contents( $tmp_out );
-    }
-    wp_delete_file( $tmp_out );
-
-    if ( '' === $compressed || substr( $compressed, 0, 4 ) !== '%PDF' || false === strpos( $compressed, '%%EOF' ) ) {
-        mk20_api_audit_log(
-            sprintf(
-                'IMPORT_PDF_COMPRESS_SKIP motivo=salida_invalida gs=%s exit=%d timed_out=%d',
-                $gs_binary,
-                (int) $result['exit'],
-                ! empty( $result['timed_out'] ) ? 1 : 0
-            )
-        );
-        return $pdf_content;
-    }
-
-    $in_pages  = (int) preg_match_all( '#/Type\s*/Page[^s]#', $pdf_content );
-    $out_pages = (int) preg_match_all( '#/Type\s*/Page[^s]#', $compressed );
-    if ( $in_pages > 0 && $in_pages !== $out_pages ) {
-        mk20_api_audit_log(
-            sprintf(
-                'IMPORT_PDF_COMPRESS_SKIP motivo=paginas_distintas antes=%d despues=%d',
-                $in_pages,
-                $out_pages
-            )
-        );
-        return $pdf_content;
-    }
-
-    if ( strlen( $compressed ) >= strlen( $pdf_content ) ) {
-        mk20_api_audit_log(
-            sprintf(
-                'IMPORT_PDF_COMPRESS_SKIP motivo=sin_ahorro antes=%d despues=%d',
-                strlen( $pdf_content ),
-                strlen( $compressed )
-            )
-        );
-        return $pdf_content;
-    }
-
-    mk20_api_audit_log(
-        sprintf(
-            'IMPORT_PDF_COMPRESS_OK gs=%s quality=%s antes=%d despues=%d',
-            $gs_binary,
-            $quality,
-            strlen( $pdf_content ),
-            strlen( $compressed )
-        )
-    );
-
-    return $compressed;
-}
-
-/**
- * Importa un certificado PDF desde una fuente externa y lo registra
+Importa un certificado PDF desde una fuente externa y lo registra
  * con el mismo formato que los certificados nativos del plugin.
- * Antes de guardarlo, intenta comprimirlo con Ghostscript si está disponible.
  *
  * @param string $pdf_content  Contenido binario del PDF.
  * @param int    $user_id      ID del usuario en WordPress.
@@ -712,7 +510,8 @@ function mk20_import_external_certificate( $pdf_content, $user_id, $external_id,
         return $existing_path;
     }
 
-    $pdf_content = mk20_compress_pdf_content( $pdf_content );
+    // Sin compresión de Ghostscript: se guarda el PDF tal cual.
+
 
     $upload_dir = wp_upload_dir();
     $cert_dir   = $upload_dir['basedir'] . '/mk20-certificates';
@@ -822,7 +621,7 @@ function mk20_store_rejected_pdf( $user_id, $external_id, $course_title, $reason
  * Flujo (documento_formacion.pdf): DNI del perfil BuddyBoss -> formacion_list
  * -> generar_pdf por cada formación no importada -> importación con
  * mk20_import_external_certificate(). El PDF se guarda tal cual lo envía
- * Lares (su diseño), salvo que la compresión con Ghostscript esté activa.
+ * Lares (su diseño).
  * Ante cualquier fallo no rompe el perfil: lo registra en el audit log y/o
  * en rechazados. Respeta el TTL configurable.
  *
