@@ -3,7 +3,7 @@
  * Plugin Name: MK20 Custom Certificates
  * Plugin URI:  https://github.com/merka20/MK20_custom-certificates
  * Description: Genera certificados PDF de dos caras (anverso y reverso) personalizados mediante FPDF al completar cursos de LearnDash.
- * Version:     1.4.8
+ * Version:     1.4.9
  * Author:      Merka2.0
  * Author URI:  https://merka20.com
  * License:     GPL-2.0-or-later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'MK20_CERT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MK20_CERT_URL', plugin_dir_url( __FILE__ ) );
-define( 'MK20_CERT_VERSION', '1.4.8' );
+define( 'MK20_CERT_VERSION', '1.4.9' );
 define( 'MK20_CERT_DB_VERSION', '1.0.0' );
 
 if ( ! defined( 'MK20_EXT_API_URL' ) ) {
@@ -261,6 +261,7 @@ function mk20_custom_certificates_init() {
     add_action( 'admin_post_nopriv_mk20_download_ext_cert', 'mk20_download_external_certificate' );
     add_action( 'admin_post_mk20_reset_settings', 'mk20_reset_to_defaults' );
     add_action( 'admin_post_mk20_dismiss_rejected', 'mk20_dismiss_rejected_certificates' );
+    add_action( 'admin_post_mk20_recheck_gs', 'mk20_recheck_gs_binary' );
 
     add_action( 'admin_notices', 'mk20_fpdf_update_admin_notice' );
 
@@ -294,6 +295,22 @@ function mk20_api_audit_log( $message ) {
     $line      = "[{$timestamp}] {$message}" . PHP_EOL;
     // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_file_put_contents
     file_put_contents( MK20_EXT_API_LOG, $line, FILE_APPEND | LOCK_EX );
+}
+
+/**
+ * Borra la caché de Ghostscript y vuelve a los ajustes para volver a comprobarlo.
+ */
+function mk20_recheck_gs_binary() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'No tienes permiso para realizar esta acción.', 'mk20-custom-certificates' ) );
+    }
+
+    check_admin_referer( 'mk20_recheck_gs' );
+
+    delete_transient( 'mk20_gs_binary' );
+
+    wp_safe_redirect( admin_url( 'options-general.php?page=mk20-certificates' ) );
+    exit;
 }
 
 function mk20_dismiss_rejected_certificates() {
