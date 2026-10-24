@@ -266,14 +266,25 @@ class MK20_PDF_Engine {
 
             // Pie de integridad: hash completo + timestamp + URL + QR
             $this->last_verify_hash = hash( 'sha256', $user_id . '|' . $course_id . '|' . $student_name . '|' . $course_title . '|' . $date );
-            $footer_hash   = 'HASH: ' . $this->last_verify_hash;
             $footer_ts     = 'TS: ' . gmdate( 'Y-m-d H:i:s \U\T\C' );
             $verify_page   = home_url( '/verificar/' );
-
-            $this->write_text( $pdf, $footer_hash, 10, 197, 'Arial', '', 6, '#666666', false );
-            $this->write_text( $pdf, $footer_ts, 10, 201, 'Arial', '', 6, '#666666', false );
             $short_code  = substr( $this->last_verify_hash, 0, 12 );
-            $this->write_text( $pdf, $verify_page . $short_code, 10, 205, 'Arial', '', 6, '#666666', false );
+
+            // Escribir el hash partido en líneas para que no se salga del recuadro (SHA-256 = 64 chars).
+            $hash_chunks = str_split( $this->last_verify_hash, 34 );
+            $hash_y      = 197;
+            $this->write_text( $pdf, 'HASH: ' . $hash_chunks[0], 10, $hash_y, 'Arial', '', 5, '#666666', false );
+            $hash_y += 3.5;
+            for ( $i = 1; $i < count( $hash_chunks ); $i++ ) {
+                $this->write_text( $pdf, $hash_chunks[ $i ], 10, $hash_y, 'Arial', '', 5, '#666666', false );
+                $hash_y += 3.5;
+            }
+
+            $ts_y   = $hash_y + 1.5;
+            $url_y  = $ts_y + 4;
+
+            $this->write_text( $pdf, $footer_ts, 10, $ts_y, 'Arial', '', 5, '#666666', false );
+            $this->write_text( $pdf, $verify_page . $short_code, 10, $url_y, 'Arial', '', 5, '#666666', false );
             $qr_data    = home_url( '/verificar/' . $short_code );
             $qr_url  = 'https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=' . urlencode( $qr_data );
             $qr_temp = download_url( $qr_url, 3 );
