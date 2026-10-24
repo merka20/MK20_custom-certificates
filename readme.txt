@@ -3,7 +3,7 @@ Contributors: merka20
 Tags: certificates, learndash, buddypress, pdf, fpdf
 Requires at least: 5.0
 Tested up to: 7.1
-Stable tag: 1.4.12
+Stable tag: 1.4.9-p
 Requires PHP: 7.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -25,12 +25,9 @@ Certificates can also be uploaded automatically to an external API via POST mult
 
 == Changelog ==
 
-= 1.4.11 =
-* Read API for integrations: `mk20_get_user_certificates()` returns the certificates of a user (native and external)
-* New `mk20_user_can_download_certificate` filter to delegate certificate downloads to other plugins (group leaders panel). Default behaviour unchanged: owner and administrators only
-
-= 1.4.10 =
-* Ghostscript diagnostics: when it is not detected, the settings page shows the exit code and stderr of each binary tested (127 = not found or not in PHP's PATH)
+= 1.4.9-p =
+* Fixed verification hash overflowing certificate back page: hash is now wrapped across multiple lines
+* Removed "Check again" Ghostscript button (no Ghostscript diagnosis)
 
 = 1.4.9 =
 * New "Check again" button next to the Ghostscript status: clears the 12-hour cache and re-detects it without saving the settings
@@ -38,9 +35,6 @@ Certificates can also be uploaded automatically to an external API via POST mult
 = 1.4.8 =
 * The certificate link and the course-page notice are now part of the plugin (previously a separate must-use plugin)
 * After updating, delete the `lares-certificado-curso-mk20.php` mu-plugin: keeping both would show the notice twice
-
-= 1.4.12 =
-* Fixed verification hash (SHA-256) overflowing the certificate back page: it is now wrapped across multiple lines
 
 = 1.4.7 =
 * Per-course certificate switch: all courses generate certificates by default; check "No generar certificado" to disable a specific course
