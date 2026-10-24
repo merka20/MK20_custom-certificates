@@ -248,6 +248,179 @@ function mk20_format_cert_date( $timestamp ) {
 }
 
 /**
+ * Indica si un usuario puede descargar el certificado de otro usuario.
+ *
+ * Por defecto solo puede el propio interesado y los administradores. Otros
+ * plugins (por ejemplo un panel de lideres de grupo) pueden autorizarlo
+ * mediante el filtro `mk20_user_can_download_certificate`.
+ *
+ * @param int $target_user_id  Usuario propietario del certificado.
+ * @param int $current_user_id Usuario que intenta la descarga (0 = actual).
+ * @return bool True si la descarga esta autorizada.
+ */
+function mk20_can_download_certificate_for_user( $target_user_id, $current_user_id = 0 ) {
+    $target_user_id  = absint( $target_user_id );
+    $current_user_id = $current_user_id ? absint( $current_user_id ) : get_current_user_id();
+
+    if ( ! $target_user_id || ! $current_user_id ) {
+        return false;
+    }
+
+    if ( $target_user_id === $current_user_id ) {
+        return true;
+    }
+
+    if ( user_can( $current_user_id, 'manage_options' ) ) {
+        return true;
+    }
+
+    /**
+     * Permite autorizar la descarga del certificado de otro usuario.
+     *
+     * @param bool $allowed         Autorizacion. Por defecto false.
+     * @param int  $target_user_id  Usuario propietario del certificado.
+     * @param int  $current_user_id Usuario que intenta la descarga.
+     */
+    return (bool) apply_filters( 'mk20_user_can_download_certificate', false, $target_user_id, $current_user_id );
+}
+
+/**
+ * Devuelve los certificados de un usuario, generados por el plugin y externos.
+ *
+ * Cada entrada incluye el tipo, el curso, la fecha, la ruta del PDF, un enlace
+ * de descarga con nonce y, cuando existe, el enlace publico de verificacion.
+ * No comprueba permisos: eso es responsabilidad de quien consume la lista.
+ *
+ * @param int $user_id ID del usuario.
+ * @return array<int,array<string,mixed>> Lista ordenada del mas reciente al mas antiguo.
+ */
+function mk20_get_user_certificates( $user_id ) {
+    $user_id = absint( $user_id );
+
+    if ( ! $user_id ) {
+        return array();
+    }
+
+    $all_meta = get_user_meta( $user_id );
+
+    if ( ! is_array( $all_meta ) ) {
+        return array();
+    }
+
+    $certificates = array();
+    $native_url   = admin_url( 'admin-post.php?action=mk20_download_cert' );
+    $external_url = admin_url( 'admin-post.php?action=mk20_download_ext_cert' );
+
+    foreach ( $all_meta as $meta_key => $meta_values ) {
+        $value = is_array( $meta_values ) && isset( $meta_values[0] ) ? (string) $meta_values[0] : '';
+
+        if ( 0 === strpos( $meta_key, '_mk20_cert_path_' ) ) {
+            $course_id = absint( substr( $meta_key, strlen( '_mk20_cert_path_' ) ) );
+
+            if ( ! $course_id || '' === $value ) {
+                continue;
+            }
+
+            $raw_date  = (string) get_user_meta( $user_id, '_mk20_cert_date_' . $course_id, true );
+            $ts_raw    = (string) get_user_meta( $user_id, '_mk20_cert_ts_' . $course_id, true );
+            $timestamp = 0;
+
+            if ( '' !== $ts_raw ) {
+                $timestamp = ctype_digit( $ts_raw ) ? (int) $ts_raw : (int) strtotime( $ts_raw );
+            }
+
+            if ( ! $timestamp && '' !== $raw_date ) {
+                $timestamp = (int) strtotime( $raw_date );
+            }
+
+            $verify_hash = sanitize_key( (string) get_user_meta( $user_id, '_mk20_cert_verify_' . $course_id, true ) );
+
+            $certificates[] = array(
+                'type'           => 'native',
+                'course_id'      => $course_id,
+                'course_title'   => mk20_clean_course_title( (string) get_the_title( $course_id ) ),
+                'date'           => $timestamp > 0 ? mk20_format_cert_date( $timestamp ) : '',
+                'raw_date'       => $raw_date,
+                'timestamp'      => $timestamp,
+                'path'           => $value,
+                'available'      => file_exists( $value ),
+                'download_url'   => wp_nonce_url(
+                    add_query_arg(
+                        array(
+                            'course_id' => $course_id,
+                            'user_id'   => $user_id,
+                        ),
+                        $native_url
+                    ),
+                    'mk20_download_cert_' . $course_id
+                ),
+                'verify_hash'    => $verify_hash,
+                'verify_url'     => '' !== $verify_hash ? home_url( '/verificar/' . $verify_hash ) : '',
+                'integrity_hash' => (string) get_user_meta( $user_id, '_mk20_cert_hash_' . $course_id, true ),
+            );
+        } elseif ( 0 === strpos( $meta_key, '_mk20_ext_cert_path_' ) ) {
+            $hash = sanitize_key( substr( $meta_key, strlen( '_mk20_ext_cert_path_' ) ) );
+
+            if ( '' === $hash || '' === $value ) {
+                continue;
+            }
+
+            $raw_date  = (string) get_user_meta( $user_id, '_mk20_ext_cert_date_' . $hash, true );
+            $ts_raw    = (string) get_user_meta( $user_id, '_mk20_ext_cert_ts_' . $hash, true );
+            $timestamp = 0;
+
+            if ( '' !== $ts_raw ) {
+                $timestamp = ctype_digit( $ts_raw ) ? (int) $ts_raw : (int) strtotime( $ts_raw );
+            }
+
+            if ( ! $timestamp && '' !== $raw_date ) {
+                $timestamp = (int) strtotime( $raw_date );
+            }
+
+            $certificates[] = array(
+                'type'           => 'external',
+                'course_id'      => 0,
+                'course_title'   => mk20_clean_course_title( (string) get_user_meta( $user_id, '_mk20_ext_course_title_' . $hash, true ) ),
+                'date'           => $timestamp > 0 ? mk20_format_cert_date( $timestamp ) : '',
+                'raw_date'       => $raw_date,
+                'timestamp'      => $timestamp,
+                'path'           => $value,
+                'available'      => file_exists( $value ),
+                'download_url'   => wp_nonce_url(
+                    add_query_arg(
+                        array(
+                            'ext_cert' => $hash,
+                            'user_id'  => $user_id,
+                        ),
+                        $external_url
+                    ),
+                    'mk20_download_ext_cert_' . $hash
+                ),
+                'verify_hash'    => '',
+                'verify_url'     => '',
+                'integrity_hash' => (string) get_user_meta( $user_id, '_mk20_ext_cert_hash_' . $hash, true ),
+                'external_hash'  => $hash,
+            );
+        }
+    }
+
+    usort(
+        $certificates,
+        static function ( $a, $b ) {
+            return (int) $b['timestamp'] <=> (int) $a['timestamp'];
+        }
+    );
+
+    /**
+     * Filtra la lista de certificados de un usuario.
+     *
+     * @param array<int,array<string,mixed>> $certificates Certificados encontrados.
+     * @param int                            $user_id      ID del usuario.
+     */
+    return apply_filters( 'mk20_get_user_certificates', $certificates, $user_id );
+}
+
+/**
  * Devuelve los valores por defecto de todos los ajustes del plugin.
  * Sirve como fuente única de verdad para los valores predeterminados.
  */

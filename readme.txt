@@ -3,7 +3,7 @@ Contributors: merka20
 Tags: certificates, learndash, buddypress, pdf, fpdf
 Requires at least: 5.0
 Tested up to: 7.1
-Stable tag: 1.4.10
+Stable tag: 1.4.11
 Requires PHP: 7.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -24,6 +24,10 @@ Certificates can also be uploaded automatically to an external API via POST mult
 3. Go to Settings → MK20 Certificates to configure
 
 == Changelog ==
+
+= 1.4.11 =
+* Read API for integrations: `mk20_get_user_certificates()` returns the certificates of a user (native and external)
+* New `mk20_user_can_download_certificate` filter to delegate certificate downloads to other plugins (group leaders panel). Default behaviour unchanged: owner and administrators only
 
 = 1.4.10 =
 * Ghostscript diagnostics: when it is not detected, the settings page shows the exit code and stderr of each binary tested (127 = not found or not in PHP's PATH)
