@@ -1256,7 +1256,13 @@ class MK20_Admin {
                                     <?php esc_html_e( 'Eliminar', 'mk20-custom-certificates' ); ?>
                                 </a>
                             <?php else : ?>
-                                <span style="color:#94a3b8;">—</span>
+                                <?php $delete_ext_url = wp_nonce_url( add_query_arg( [ 'ext_cert' => $hash, 'user_id' => $row->user_id ], admin_url( 'admin-post.php?action=mk20_delete_ext_cert' ) ), 'mk20_delete_ext_cert_' . $hash ); ?>
+                                <a href="<?php echo esc_url( $delete_ext_url ); ?>"
+                                   class="button button-small"
+                                   style="background:#ef4444;color:#fff;border:none;text-decoration:none;"
+                                   onclick="return confirm('<?php echo esc_js( __( '¿Eliminar este certificado externo permanentemente?', 'mk20-custom-certificates' ) ); ?>');">
+                                    <?php esc_html_e( 'Eliminar', 'mk20-custom-certificates' ); ?>
+                                </a>
                             <?php endif; ?>
                         </td>
                     </tr>
