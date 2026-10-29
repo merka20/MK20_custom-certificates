@@ -266,9 +266,9 @@ class MK20_PDF_Engine {
 
             // Pie de integridad: hash completo + timestamp + URL + QR
             $this->last_verify_hash = hash( 'sha256', $user_id . '|' . $course_id . '|' . $student_name . '|' . $course_title . '|' . $date );
-            $footer_hash   = 'HASH: ' . $this->last_verify_hash;
             $footer_ts     = 'TS: ' . gmdate( 'Y-m-d H:i:s \U\T\C' );
             $verify_page   = home_url( '/verificar/' );
+            $short_code  = substr( $this->last_verify_hash, 0, 12 );
 
             // Escribir el hash partido en líneas para que no se salga del recuadro (SHA-256 = 64 chars).
             $hash_chunks = str_split( $this->last_verify_hash, 34 );
@@ -501,4 +501,4 @@ class MK20_PDF_Engine {
 
         return $text;
     }
-}
+} 
