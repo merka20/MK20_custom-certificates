@@ -248,179 +248,6 @@ function mk20_format_cert_date( $timestamp ) {
 }
 
 /**
- * Indica si un usuario puede descargar el certificado de otro usuario.
- *
- * Por defecto solo puede el propio interesado y los administradores. Otros
- * plugins (por ejemplo un panel de lideres de grupo) pueden autorizarlo
- * mediante el filtro `mk20_user_can_download_certificate`.
- *
- * @param int $target_user_id  Usuario propietario del certificado.
- * @param int $current_user_id Usuario que intenta la descarga (0 = actual).
- * @return bool True si la descarga esta autorizada.
- */
-function mk20_can_download_certificate_for_user( $target_user_id, $current_user_id = 0 ) {
-    $target_user_id  = absint( $target_user_id );
-    $current_user_id = $current_user_id ? absint( $current_user_id ) : get_current_user_id();
-
-    if ( ! $target_user_id || ! $current_user_id ) {
-        return false;
-    }
-
-    if ( $target_user_id === $current_user_id ) {
-        return true;
-    }
-
-    if ( user_can( $current_user_id, 'manage_options' ) ) {
-        return true;
-    }
-
-    /**
-     * Permite autorizar la descarga del certificado de otro usuario.
-     *
-     * @param bool $allowed         Autorizacion. Por defecto false.
-     * @param int  $target_user_id  Usuario propietario del certificado.
-     * @param int  $current_user_id Usuario que intenta la descarga.
-     */
-    return (bool) apply_filters( 'mk20_user_can_download_certificate', false, $target_user_id, $current_user_id );
-}
-
-/**
- * Devuelve los certificados de un usuario, generados por el plugin y externos.
- *
- * Cada entrada incluye el tipo, el curso, la fecha, la ruta del PDF, un enlace
- * de descarga con nonce y, cuando existe, el enlace publico de verificacion.
- * No comprueba permisos: eso es responsabilidad de quien consume la lista.
- *
- * @param int $user_id ID del usuario.
- * @return array<int,array<string,mixed>> Lista ordenada del mas reciente al mas antiguo.
- */
-function mk20_get_user_certificates( $user_id ) {
-    $user_id = absint( $user_id );
-
-    if ( ! $user_id ) {
-        return array();
-    }
-
-    $all_meta = get_user_meta( $user_id );
-
-    if ( ! is_array( $all_meta ) ) {
-        return array();
-    }
-
-    $certificates = array();
-    $native_url   = admin_url( 'admin-post.php?action=mk20_download_cert' );
-    $external_url = admin_url( 'admin-post.php?action=mk20_download_ext_cert' );
-
-    foreach ( $all_meta as $meta_key => $meta_values ) {
-        $value = is_array( $meta_values ) && isset( $meta_values[0] ) ? (string) $meta_values[0] : '';
-
-        if ( 0 === strpos( $meta_key, '_mk20_cert_path_' ) ) {
-            $course_id = absint( substr( $meta_key, strlen( '_mk20_cert_path_' ) ) );
-
-            if ( ! $course_id || '' === $value ) {
-                continue;
-            }
-
-            $raw_date  = (string) get_user_meta( $user_id, '_mk20_cert_date_' . $course_id, true );
-            $ts_raw    = (string) get_user_meta( $user_id, '_mk20_cert_ts_' . $course_id, true );
-            $timestamp = 0;
-
-            if ( '' !== $ts_raw ) {
-                $timestamp = ctype_digit( $ts_raw ) ? (int) $ts_raw : (int) strtotime( $ts_raw );
-            }
-
-            if ( ! $timestamp && '' !== $raw_date ) {
-                $timestamp = (int) strtotime( $raw_date );
-            }
-
-            $verify_hash = sanitize_key( (string) get_user_meta( $user_id, '_mk20_cert_verify_' . $course_id, true ) );
-
-            $certificates[] = array(
-                'type'           => 'native',
-                'course_id'      => $course_id,
-                'course_title'   => mk20_clean_course_title( (string) get_the_title( $course_id ) ),
-                'date'           => $timestamp > 0 ? mk20_format_cert_date( $timestamp ) : '',
-                'raw_date'       => $raw_date,
-                'timestamp'      => $timestamp,
-                'path'           => $value,
-                'available'      => file_exists( $value ),
-                'download_url'   => wp_nonce_url(
-                    add_query_arg(
-                        array(
-                            'course_id' => $course_id,
-                            'user_id'   => $user_id,
-                        ),
-                        $native_url
-                    ),
-                    'mk20_download_cert_' . $course_id
-                ),
-                'verify_hash'    => $verify_hash,
-                'verify_url'     => '' !== $verify_hash ? home_url( '/verificar/' . $verify_hash ) : '',
-                'integrity_hash' => (string) get_user_meta( $user_id, '_mk20_cert_hash_' . $course_id, true ),
-            );
-        } elseif ( 0 === strpos( $meta_key, '_mk20_ext_cert_path_' ) ) {
-            $hash = sanitize_key( substr( $meta_key, strlen( '_mk20_ext_cert_path_' ) ) );
-
-            if ( '' === $hash || '' === $value ) {
-                continue;
-            }
-
-            $raw_date  = (string) get_user_meta( $user_id, '_mk20_ext_cert_date_' . $hash, true );
-            $ts_raw    = (string) get_user_meta( $user_id, '_mk20_ext_cert_ts_' . $hash, true );
-            $timestamp = 0;
-
-            if ( '' !== $ts_raw ) {
-                $timestamp = ctype_digit( $ts_raw ) ? (int) $ts_raw : (int) strtotime( $ts_raw );
-            }
-
-            if ( ! $timestamp && '' !== $raw_date ) {
-                $timestamp = (int) strtotime( $raw_date );
-            }
-
-            $certificates[] = array(
-                'type'           => 'external',
-                'course_id'      => 0,
-                'course_title'   => mk20_clean_course_title( (string) get_user_meta( $user_id, '_mk20_ext_course_title_' . $hash, true ) ),
-                'date'           => $timestamp > 0 ? mk20_format_cert_date( $timestamp ) : '',
-                'raw_date'       => $raw_date,
-                'timestamp'      => $timestamp,
-                'path'           => $value,
-                'available'      => file_exists( $value ),
-                'download_url'   => wp_nonce_url(
-                    add_query_arg(
-                        array(
-                            'ext_cert' => $hash,
-                            'user_id'  => $user_id,
-                        ),
-                        $external_url
-                    ),
-                    'mk20_download_ext_cert_' . $hash
-                ),
-                'verify_hash'    => '',
-                'verify_url'     => '',
-                'integrity_hash' => (string) get_user_meta( $user_id, '_mk20_ext_cert_hash_' . $hash, true ),
-                'external_hash'  => $hash,
-            );
-        }
-    }
-
-    usort(
-        $certificates,
-        static function ( $a, $b ) {
-            return (int) $b['timestamp'] <=> (int) $a['timestamp'];
-        }
-    );
-
-    /**
-     * Filtra la lista de certificados de un usuario.
-     *
-     * @param array<int,array<string,mixed>> $certificates Certificados encontrados.
-     * @param int                            $user_id      ID del usuario.
-     */
-    return apply_filters( 'mk20_get_user_certificates', $certificates, $user_id );
-}
-
-/**
  * Devuelve los valores por defecto de todos los ajustes del plugin.
  * Sirve como fuente única de verdad para los valores predeterminados.
  */
@@ -507,8 +334,6 @@ function mk20_get_default_settings() {
         'lares_api_base'     => '',
         'lares_sync_ttl'     => 21600, // 6 horas en segundos.
         'lares_force_sync'   => 0, // 1 = ignorar caché y llamar siempre a la API.
-        'lares_compress_pdf' => 1, // 1 = comprimir PDFs externos si Ghostscript está disponible.
-        'lares_pdf_quality'  => 'ebook', // screen | ebook | printer.
     ];
 }
 
@@ -579,16 +404,15 @@ function mk20_lares_is_configured() {
  *
  * @param array $command Comando y argumentos.
  * @param int   $timeout Segundos máximos de ejecución.
- * @return array{ok:bool,exit:int,stdout:string,stderr:string,timed_out:bool,launch_failed:bool}
+ * @return array{ok:bool,exit:int,stdout:string,stderr:string,timed_out:bool}
  */
 function mk20_pdf_run_process( $command, $timeout = 20 ) {
     $result = array(
-        'ok'            => false,
-        'exit'          => -1,
-        'stdout'        => '',
-        'stderr'        => '',
-        'timed_out'     => false,
-        'launch_failed' => false,
+        'ok'        => false,
+        'exit'      => -1,
+        'stdout'    => '',
+        'stderr'    => '',
+        'timed_out' => false,
     );
 
     if ( ! function_exists( 'proc_open' ) || ! is_array( $command ) || empty( $command ) ) {
@@ -601,10 +425,8 @@ function mk20_pdf_run_process( $command, $timeout = 20 ) {
         2 => array( 'pipe', 'w' ),
     );
 
-    // phpcs:ignore Generic.PHP.ForbiddenFunctions.Found,WordPress.PHP.DiscouragedPHPFunctions.system_calls_proc_open -- Necesario para invocar Ghostscript; el comando se pasa como array, sin shell.
     $process = @proc_open( $command, $descriptors, $pipes );
     if ( ! is_resource( $process ) ) {
-        $result['launch_failed'] = true;
         return $result;
     }
 
@@ -661,251 +483,8 @@ function mk20_pdf_run_process( $command, $timeout = 20 ) {
 }
 
 /**
- * Devuelve los binarios de Ghostscript candidatos, por orden de prioridad.
- *
- * Prioridad: constante MK20_GS_BINARY > filtro > candidatos habituales.
- *
- * @return string[]
- */
-function mk20_pdf_gs_candidates() {
-    $candidates = array();
-
-    if ( defined( 'MK20_GS_BINARY' ) && is_string( MK20_GS_BINARY ) && '' !== MK20_GS_BINARY ) {
-        $candidates[] = MK20_GS_BINARY;
-    }
-
-    $filtered = apply_filters( 'mk20_pdf_compress_gs_binary', '' );
-    if ( is_string( $filtered ) && '' !== $filtered ) {
-        $candidates[] = $filtered;
-    }
-
-    $candidates = array_merge(
-        $candidates,
-        array( 'gs', '/usr/bin/gs', '/usr/local/bin/gs', '/bin/gs', '/opt/homebrew/bin/gs', 'gswin64c.exe', 'gswin32c.exe' )
-    );
-
-    foreach ( (array) glob( 'C:\\Program Files\\gs\\gs*\\bin\\gswin64c.exe' ) as $windows_gs ) {
-        $candidates[] = $windows_gs;
-    }
-
-    return array_values( array_unique( array_filter( array_map( 'strval', $candidates ) ) ) );
-}
-
-/**
- * Prueba cada binario candidato con --version y devuelve el resultado.
- *
- * Se detiene en el primer binario válido (no vacío y código de salida 0).
- *
- * @return array<int,array{binary:string,ok:bool,exit:int,stdout:string,stderr:string,timed_out:bool,launch_failed:bool}>
- */
-function mk20_pdf_gs_probe() {
-    $diagnostics = array();
-
-    if ( ! function_exists( 'proc_open' ) ) {
-        return $diagnostics;
-    }
-
-    foreach ( mk20_pdf_gs_candidates() as $binary ) {
-        $result = mk20_pdf_run_process( array( $binary, '--version' ), 3 );
-
-        $works = ! empty( $result['ok'] ) && '' !== trim( (string) $result['stdout'] );
-
-        $diagnostics[] = array(
-            'binary'        => $binary,
-            'ok'            => $works,
-            'exit'          => (int) $result['exit'],
-            'stdout'        => trim( (string) $result['stdout'] ),
-            'stderr'        => trim( (string) $result['stderr'] ),
-            'timed_out'     => ! empty( $result['timed_out'] ),
-            'launch_failed' => ! empty( $result['launch_failed'] ),
-        );
-
-        if ( $works ) {
-            break;
-        }
-    }
-
-    return $diagnostics;
-}
-
-/**
- * Devuelve el binario de Ghostscript disponible, o cadena vacía.
- *
- * Prioridad: constante MK20_GS_BINARY > filtro > candidatos habituales.
- * El resultado se cachea 12 horas en un transient.
- *
- * @return string
- */
-function mk20_pdf_compress_gs_binary() {
-    static $cached = null;
-
-    if ( null !== $cached ) {
-        return $cached;
-    }
-
-    if ( ! function_exists( 'proc_open' ) ) {
-        $cached = '';
-        return $cached;
-    }
-
-    $transient = get_transient( 'mk20_gs_binary' );
-    if ( false !== $transient ) {
-        $cached = is_string( $transient ) ? $transient : '';
-        return $cached;
-    }
-
-    $found       = '';
-    $diagnostics = mk20_pdf_gs_probe();
-
-    foreach ( $diagnostics as $diagnostic ) {
-        if ( ! empty( $diagnostic['ok'] ) ) {
-            $found = $diagnostic['binary'];
-            break;
-        }
-    }
-
-    set_transient( 'mk20_gs_binary', $found, 12 * HOUR_IN_SECONDS );
-    set_transient( 'mk20_gs_diag', $diagnostics, 12 * HOUR_IN_SECONDS );
-    $cached = $found;
-
-    return $cached;
-}
-
-/**
- * Devuelve el diagnóstico cacheado de la última comprobación de Ghostscript.
- *
- * @return array<int,array<string,mixed>>
- */
-function mk20_pdf_gs_diagnostics() {
-    $diagnostics = get_transient( 'mk20_gs_diag' );
-
-    return is_array( $diagnostics ) ? $diagnostics : array();
-}
-
-/**
- * Comprime un PDF externo con Ghostscript si está disponible.
- *
- * Si no hay Ghostscript, falla la ejecución o la salida no es válida,
- * devuelve el contenido original sin interrumpir la importación.
- *
- * @param string     $pdf_content Contenido binario del PDF.
- * @param array|null $settings    Ajustes del plugin (opcional).
- * @return string Contenido comprimido o el original.
- */
-function mk20_compress_pdf_content( $pdf_content, $settings = null ) {
-    if ( ! is_string( $pdf_content ) || '' === $pdf_content || substr( $pdf_content, 0, 4 ) !== '%PDF' ) {
-        return $pdf_content;
-    }
-
-    if ( null === $settings ) {
-        $settings = wp_parse_args( get_option( 'mk20_cert_settings', array() ), mk20_get_default_settings() );
-    }
-
-    if ( empty( $settings['lares_compress_pdf'] ) ) {
-        return $pdf_content;
-    }
-
-    $quality = isset( $settings['lares_pdf_quality'] ) ? (string) $settings['lares_pdf_quality'] : 'ebook';
-    if ( ! in_array( $quality, array( 'screen', 'ebook', 'printer' ), true ) ) {
-        $quality = 'ebook';
-    }
-
-    $gs_binary = mk20_pdf_compress_gs_binary();
-    if ( '' === $gs_binary ) {
-        mk20_api_audit_log( 'IMPORT_PDF_COMPRESS_SKIP motivo=ghostscript_no_disponible' );
-        return $pdf_content;
-    }
-
-    $temp_dir = get_temp_dir();
-    $tmp_in   = $temp_dir . wp_unique_filename( $temp_dir, 'mk20-pdf-in.pdf' );
-    $tmp_out  = $temp_dir . wp_unique_filename( $temp_dir, 'mk20-pdf-out.pdf' );
-
-    $written = file_put_contents( $tmp_in, $pdf_content );
-    if ( false === $written ) {
-        wp_delete_file( $tmp_in );
-        mk20_api_audit_log( 'IMPORT_PDF_COMPRESS_SKIP motivo=error_temporal' );
-        return $pdf_content;
-    }
-
-    $command = array(
-        $gs_binary,
-        '-q',
-        '-dNOPAUSE',
-        '-dBATCH',
-        '-dSAFER',
-        '-sDEVICE=pdfwrite',
-        '-dCompatibilityLevel=1.4',
-        '-dPDFSETTINGS=/' . $quality,
-        '-dEmbedAllFonts=true',
-        '-dSubsetFonts=true',
-        '-dAutoRotatePages=/None',
-        '-sOutputFile=' . $tmp_out,
-        $tmp_in,
-    );
-
-    $result = mk20_pdf_run_process( $command, 20 );
-
-    wp_delete_file( $tmp_in );
-
-    $compressed = '';
-    if ( ! empty( $result['ok'] ) && file_exists( $tmp_out ) ) {
-        $compressed = (string) file_get_contents( $tmp_out );
-    }
-    wp_delete_file( $tmp_out );
-
-    if ( '' === $compressed || substr( $compressed, 0, 4 ) !== '%PDF' || false === strpos( $compressed, '%%EOF' ) ) {
-        mk20_api_audit_log(
-            sprintf(
-                'IMPORT_PDF_COMPRESS_SKIP motivo=salida_invalida gs=%s exit=%d timed_out=%d',
-                $gs_binary,
-                (int) $result['exit'],
-                ! empty( $result['timed_out'] ) ? 1 : 0
-            )
-        );
-        return $pdf_content;
-    }
-
-    $in_pages  = (int) preg_match_all( '#/Type\s*/Page[^s]#', $pdf_content );
-    $out_pages = (int) preg_match_all( '#/Type\s*/Page[^s]#', $compressed );
-    if ( $in_pages > 0 && $in_pages !== $out_pages ) {
-        mk20_api_audit_log(
-            sprintf(
-                'IMPORT_PDF_COMPRESS_SKIP motivo=paginas_distintas antes=%d despues=%d',
-                $in_pages,
-                $out_pages
-            )
-        );
-        return $pdf_content;
-    }
-
-    if ( strlen( $compressed ) >= strlen( $pdf_content ) ) {
-        mk20_api_audit_log(
-            sprintf(
-                'IMPORT_PDF_COMPRESS_SKIP motivo=sin_ahorro antes=%d despues=%d',
-                strlen( $pdf_content ),
-                strlen( $compressed )
-            )
-        );
-        return $pdf_content;
-    }
-
-    mk20_api_audit_log(
-        sprintf(
-            'IMPORT_PDF_COMPRESS_OK gs=%s quality=%s antes=%d despues=%d',
-            $gs_binary,
-            $quality,
-            strlen( $pdf_content ),
-            strlen( $compressed )
-        )
-    );
-
-    return $compressed;
-}
-
-/**
- * Importa un certificado PDF desde una fuente externa y lo registra
+ * Importa un certificado PDFImporta un certificado PDF desde una fuente externa y lo registra
  * con el mismo formato que los certificados nativos del plugin.
- * Antes de guardarlo, intenta comprimirlo con Ghostscript si está disponible.
  *
  * @param string $pdf_content  Contenido binario del PDF.
  * @param int    $user_id      ID del usuario en WordPress.
@@ -933,7 +512,8 @@ function mk20_import_external_certificate( $pdf_content, $user_id, $external_id,
         return $existing_path;
     }
 
-    $pdf_content = mk20_compress_pdf_content( $pdf_content );
+    // Sin compresión de Ghostscript: se guarda el PDF tal cual.
+
 
     $upload_dir = wp_upload_dir();
     $cert_dir   = $upload_dir['basedir'] . '/mk20-certificates';
@@ -969,6 +549,31 @@ function mk20_import_external_certificate( $pdf_content, $user_id, $external_id,
     update_user_meta( $user_id, '_mk20_ext_course_title_' . $hash, $course_title );
     update_user_meta( $user_id, '_mk20_ext_cert_hash_' . $hash, $integrity_hash );
     update_user_meta( $user_id, '_mk20_ext_cert_ts_' . $hash, current_time( 'mysql' ) );
+    update_user_meta( $user_id, '_mk20_ext_cert_extid_' . $hash, $external_id );
+
+    $ext_course_id = 0;
+    if ( is_string( $external_id ) && false !== strpos( $external_id, '_' ) ) {
+        $parts = explode( '_', $external_id );
+        $last  = end( $parts );
+        if ( is_numeric( $last ) ) {
+            $ext_course_id = absint( $last );
+        }
+    }
+    if ( $ext_course_id ) {
+        update_user_meta( $user_id, '_mk20_ext_course_id_' . $hash, $ext_course_id );
+    }
+
+    $ext_course_id = 0;
+    if ( is_string( $external_id ) && false !== strpos( $external_id, '_' ) ) {
+        $parts = explode( '_', $external_id );
+        $last  = end( $parts );
+        if ( is_numeric( $last ) ) {
+            $ext_course_id = absint( $last );
+        }
+    }
+    if ( $ext_course_id ) {
+        update_user_meta( $user_id, '_mk20_ext_course_id_' . $hash, $ext_course_id );
+    }
 
     $attach_id = mk20_register_external_certificate_attachment( $filepath, $user_id, $hash, $course_title, $student_name );
     if ( $attach_id ) {
@@ -1043,7 +648,7 @@ function mk20_store_rejected_pdf( $user_id, $external_id, $course_title, $reason
  * Flujo (documento_formacion.pdf): DNI del perfil BuddyBoss -> formacion_list
  * -> generar_pdf por cada formación no importada -> importación con
  * mk20_import_external_certificate(). El PDF se guarda tal cual lo envía
- * Lares (su diseño), salvo que la compresión con Ghostscript esté activa.
+ * Lares (su diseño).
  * Ante cualquier fallo no rompe el perfil: lo registra en el audit log y/o
  * en rechazados. Respeta el TTL configurable.
  *

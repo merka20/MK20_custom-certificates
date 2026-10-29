@@ -19,8 +19,9 @@ class MK20_Admin {
         add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_media_uploader' ] );
         add_action( 'admin_notices', [ $this, 'show_rejected_notice' ] );
 
-        // Procesar acción de generación de PDF de prueba
-        add_action( 'admin_post_mk20_preview_cert', [ $this, 'generate_preview_pdf' ] );
+        // Guardar ID de curso/formación para certificados externos
+        add_action( 'admin_post_mk20_set_ext_course_id', [ $this, 'save_ext_course_id' ] );
+        add_action( 'admin_post_nopriv_mk20_set_ext_course_id', [ $this, 'save_ext_course_id' ] );
 
         // Meta Box para cursos de LearnDash (sfwd-courses)
         add_action( 'add_meta_boxes', [ $this, 'add_course_meta_box' ] );
@@ -140,11 +141,6 @@ class MK20_Admin {
         $output['lares_api_base'] = isset( $input['lares_api_base'] ) ? esc_url_raw( $input['lares_api_base'] ) : $defaults['lares_api_base'];
         $output['lares_sync_ttl'] = isset( $input['lares_sync_ttl'] ) ? max( 300, absint( $input['lares_sync_ttl'] ) ) : $defaults['lares_sync_ttl'];
 
-        $output['lares_pdf_quality'] = isset( $input['lares_pdf_quality'] ) ? sanitize_key( $input['lares_pdf_quality'] ) : $defaults['lares_pdf_quality'];
-        if ( ! in_array( $output['lares_pdf_quality'], [ 'screen', 'ebook', 'printer' ], true ) ) {
-            $output['lares_pdf_quality'] = $defaults['lares_pdf_quality'];
-        }
-
         // Coordenadas X / Y (float)
         $float_fields = [ 'name_x', 'name_y', 'company_line_x', 'company_line_y', 'front_course_x', 'front_course_y', 'details_y', 'code_x', 'start_date_x', 'end_date_x', 'duration_y', 'duration_x', 'modality_x', 'date_x', 'date_y', 'contents_x', 'contents_y' ];
         foreach ( $float_fields as $f ) {
@@ -164,13 +160,10 @@ class MK20_Admin {
         }
 
         // Checkboxes (centrar) — 1 si está marcado, 0 si no
-        $cb_fields = [ 'name_center', 'company_line_center', 'front_course_center', 'date_center', 'contents_center', 'keep_data_on_uninstall', 'lares_enabled', 'lares_force_sync', 'lares_compress_pdf' ];
+        $cb_fields = [ 'name_center', 'company_line_center', 'front_course_center', 'date_center', 'contents_center', 'keep_data_on_uninstall', 'lares_enabled', 'lares_force_sync' ];
         foreach ( $cb_fields as $f ) {
             $output[ $f ] = isset( $input[ $f ] ) ? 1 : 0;
         }
-
-        delete_transient( 'mk20_gs_binary' );
-        delete_transient( 'mk20_gs_diag' );
 
         return $output;
     }
@@ -731,101 +724,6 @@ class MK20_Admin {
                                     </label>
                                     <p class="description"><?php esc_html_e( 'Si está marcado, cada visita al perfil llama a la API sin respetar la caché. Úsalo solo para pruebas y desmárcalo después.', 'mk20-custom-certificates' ); ?></p>
                                 </div>
-                                <div class="mk20-field-group">
-                                    <label class="align-checkbox-label" style="margin-top:0;">
-                                        <input type="checkbox" name="mk20_cert_settings[lares_compress_pdf]" value="1" <?php checked( ! empty( $settings['lares_compress_pdf'] ) ); ?>>
-                                        <?php esc_html_e( 'Comprimir PDFs descargados de Lares', 'mk20-custom-certificates' ); ?>
-                                    </label>
-                                    <p class="description"><?php esc_html_e( 'Reduce el peso antes de guardarlos. Requiere Ghostscript (gs) en el servidor; si no está disponible, se guarda el PDF original.', 'mk20-custom-certificates' ); ?></p>
-                                </div>
-                                <div class="mk20-field-group">
-                                    <label for="mk20-lares-pdf-quality"><?php esc_html_e( 'Calidad de compresión', 'mk20-custom-certificates' ); ?></label>
-                                    <select id="mk20-lares-pdf-quality" name="mk20_cert_settings[lares_pdf_quality]">
-                                        <option value="ebook" <?php selected( $settings['lares_pdf_quality'], 'ebook' ); ?>><?php esc_html_e( 'Estándar · 150 ppp (recomendado)', 'mk20-custom-certificates' ); ?></option>
-                                        <option value="printer" <?php selected( $settings['lares_pdf_quality'], 'printer' ); ?>><?php esc_html_e( 'Impresión · 300 ppp (menos compresión)', 'mk20-custom-certificates' ); ?></option>
-                                        <option value="screen" <?php selected( $settings['lares_pdf_quality'], 'screen' ); ?>><?php esc_html_e( 'Pantalla · 72 ppp (máxima compresión)', 'mk20-custom-certificates' ); ?></option>
-                                    </select>
-                                </div>
-                                <div class="mk20-field-group">
-                                    <?php
-                                    $mk20_gs_binary = mk20_pdf_compress_gs_binary();
-                                    if ( ! function_exists( 'proc_open' ) ) {
-                                        echo '<p class="description" style="color:#d97706;">' . esc_html__( 'Ghostscript no disponible: la función PHP proc_open está deshabilitada. Los PDFs se guardarán sin comprimir.', 'mk20-custom-certificates' ) . '</p>';
-                                    } elseif ( '' === $mk20_gs_binary ) {
-                                        echo '<p class="description" style="color:#d97706;">' . esc_html__( 'Ghostscript no detectado. Los PDFs se guardarán sin comprimir. Instala gs o define MK20_GS_BINARY en wp-config.php.', 'mk20-custom-certificates' ) . '</p>';
-
-                                        $mk20_gs_diagnostics = mk20_pdf_gs_diagnostics();
-                                        if ( ! empty( $mk20_gs_diagnostics ) ) {
-                                            echo '<details style="margin-top:8px;">';
-                                            echo '<summary style="cursor:pointer; font-weight:600;">' . esc_html__( 'Ver diagnóstico', 'mk20-custom-certificates' ) . '</summary>';
-                                            echo '<table class="widefat striped" style="margin-top:8px; font-size:12px;">';
-                                            echo '<thead><tr><th>' . esc_html__( 'Comando probado', 'mk20-custom-certificates' ) . '</th><th>' . esc_html__( 'Resultado', 'mk20-custom-certificates' ) . '</th></tr></thead><tbody>';
-
-                                            foreach ( $mk20_gs_diagnostics as $mk20_diag ) {
-                                                $mk20_binary  = isset( $mk20_diag['binary'] ) ? (string) $mk20_diag['binary'] : '';
-                                                $mk20_exit    = isset( $mk20_diag['exit'] ) ? (int) $mk20_diag['exit'] : -1;
-                                                $mk20_stdout  = isset( $mk20_diag['stdout'] ) ? (string) $mk20_diag['stdout'] : '';
-                                                $mk20_stderr  = isset( $mk20_diag['stderr'] ) ? (string) $mk20_diag['stderr'] : '';
-                                                $mk20_timeout = ! empty( $mk20_diag['timed_out'] );
-                                                $mk20_launch  = ! empty( $mk20_diag['launch_failed'] );
-
-                                                if ( $mk20_timeout ) {
-                                                    $mk20_status = __( 'Sin respuesta en 3 s (timeout)', 'mk20-custom-certificates' );
-                                                } elseif ( $mk20_launch ) {
-                                                    $mk20_status = __( 'No se pudo ejecutar (no existe o sin permisos)', 'mk20-custom-certificates' );
-                                                } else {
-                                                    /* translators: %d: process exit code. */
-                                                    $mk20_status = sprintf( __( 'Código de salida: %d', 'mk20-custom-certificates' ), $mk20_exit );
-                                                }
-
-                                                $mk20_detail = '' !== $mk20_stderr ? $mk20_stderr : $mk20_stdout;
-                                                if ( function_exists( 'mb_substr' ) ) {
-                                                    $mk20_detail = mb_substr( $mk20_detail, 0, 300 );
-                                                } else {
-                                                    $mk20_detail = substr( $mk20_detail, 0, 300 );
-                                                }
-
-                                                echo '<tr><td><code>' . esc_html( $mk20_binary ) . '</code></td><td>' . esc_html( $mk20_status );
-                                                if ( '' !== $mk20_detail ) {
-                                                    echo '<br><code>' . esc_html( $mk20_detail ) . '</code>';
-                                                }
-                                                echo '</td></tr>';
-                                            }
-
-                                            echo '</tbody></table>';
-                                            echo '<p class="description">' . esc_html__( 'Si pone "No se pudo ejecutar", el binario no existe o PHP no tiene permiso para lanzarlo. Código 127 = no está en el PATH del usuario de PHP. Otros códigos suelen indicar permisos o librerías del sistema.', 'mk20-custom-certificates' ) . '</p>';
-
-                                            $mk20_php_user = '';
-                                            if ( function_exists( 'posix_geteuid' ) && function_exists( 'posix_getpwuid' ) ) {
-                                                $mk20_pw = posix_getpwuid( posix_geteuid() );
-                                                if ( is_array( $mk20_pw ) && isset( $mk20_pw['name'] ) ) {
-                                                    $mk20_php_user = (string) $mk20_pw['name'];
-                                                }
-                                            }
-
-                                            $mk20_env_path = getenv( 'PATH' );
-                                            $mk20_env_path = is_string( $mk20_env_path ) ? $mk20_env_path : '';
-
-                                            if ( '' !== $mk20_php_user || '' !== $mk20_env_path ) {
-                                                echo '<p class="description" style="margin-top:4px;">';
-                                                if ( '' !== $mk20_php_user ) {
-                                                    echo esc_html__( 'Usuario de PHP:', 'mk20-custom-certificates' ) . ' <code>' . esc_html( $mk20_php_user ) . '</code>';
-                                                }
-                                                if ( '' !== $mk20_env_path ) {
-                                                    echo( '' !== $mk20_php_user ? ' · ' : '' ) . esc_html__( 'PATH:', 'mk20-custom-certificates' ) . ' <code>' . esc_html( $mk20_env_path ) . '</code>';
-                                                }
-                                                echo '</p>';
-                                            }
-                                            echo '</details>';
-                                        } else {
-                                            echo '<p class="description">' . esc_html__( 'Pulsa "Volver a comprobar" para generar el diagnóstico.', 'mk20-custom-certificates' ) . '</p>';
-                                        }
-                                    } else {
-                                        /* translators: %s: Ghostscript executable path. */
-                                        echo '<p class="description" style="color:#059669;">' . esc_html( sprintf( __( 'Ghostscript detectado: %s', 'mk20-custom-certificates' ), $mk20_gs_binary ) ) . '</p>';
-                                    }
-                                    ?>
-                                </div>
                             </div>
                         </div>
 
@@ -949,11 +847,133 @@ class MK20_Admin {
         }
 
         $current_page = isset( $_GET['paged'] ) ? max( 1, absint( wp_unslash( $_GET['paged'] ) ) ) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Solo lectura para paginar el listado.
+        $filter_name  = isset( $_GET['mk20_name_search'] ) ? sanitize_text_field( wp_unslash( $_GET['mk20_name_search'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Solo lectura para filtrar el listado.
         $per_page     = 20;
         $offset       = ( $current_page - 1 ) * $per_page;
 
         $rows  = array();
-        $users = get_users( array( 'fields' => 'ID' ) );
+        $users_args = array( 'fields' => 'ID' );
+        if ( '' !== $filter_name ) {
+            global $wpdb;
+            $search_ids = array();
+            $filter_like = '%' . $wpdb->esc_like( $filter_name ) . '%';
+
+            // Buscar por login, email, display_name
+            $user_query = new WP_User_Query( array(
+                'search'         => '*' . $filter_name . '*',
+                'search_columns' => array( 'user_login', 'user_email', 'display_name' ),
+                'fields'         => 'ID',
+                'number'         => -1,
+            ) );
+            if ( ! empty( $user_query->results ) ) {
+                $search_ids = array_merge( $search_ids, array_map( 'absint', $user_query->results ) );
+            }
+
+            // Buscar por display_name con LIKE directo
+            $display_ids = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->users} WHERE display_name LIKE %s", $filter_like ) );
+            if ( ! empty( $display_ids ) ) {
+                $search_ids = array_merge( $search_ids, array_map( 'absint', $display_ids ) );
+            }
+
+            // Buscar por nombre y apellidos
+            $terms = preg_split( '/\s+/', trim( $filter_name ) );
+            if ( count( $terms ) >= 2 ) {
+                $t1 = '%' . $wpdb->esc_like( $terms[0] ) . '%';
+                $t2 = '%' . $wpdb->esc_like( $terms[1] ) . '%';
+
+                // first_name + last_name en orden normal
+                $sql1 = $wpdb->prepare(
+                    "SELECT DISTINCT u.ID FROM {$wpdb->users} u
+                     INNER JOIN {$wpdb->usermeta} fn ON (u.ID = fn.user_id AND fn.meta_key = 'first_name')
+                     INNER JOIN {$wpdb->usermeta} ln ON (u.ID = ln.user_id AND ln.meta_key = 'last_name')
+                     WHERE (fn.meta_value LIKE %s AND ln.meta_value LIKE %s)
+                        OR (fn.meta_value LIKE %s AND ln.meta_value LIKE %s)",
+                    $t1,
+                    $t2,
+                    $t2,
+                    $t1
+                );
+                $name_ids = $wpdb->get_col( $sql1 );
+                if ( ! empty( $name_ids ) ) {
+                    $search_ids = array_merge( $search_ids, array_map( 'absint', $name_ids ) );
+                }
+            }
+
+            // Buscar por first_name o last_name individual
+            $meta_like_ids = get_users( array(
+                'meta_query' => array(
+                    'relation' => 'OR',
+                    array(
+                        'key'     => 'first_name',
+                        'value'   => $filter_name,
+                        'compare' => 'LIKE',
+                    ),
+                    array(
+                        'key'     => 'last_name',
+                        'value'   => $filter_name,
+                        'compare' => 'LIKE',
+                    ),
+                ),
+                'fields' => 'ID',
+                'number' => -1,
+            ) );
+            if ( ! empty( $meta_like_ids ) ) {
+                $search_ids = array_merge( $search_ids, array_map( 'absint', $meta_like_ids ) );
+            }
+
+            // Buscar por DNI
+            $dni_field = '';
+            if ( function_exists( 'mk20_get_default_settings' ) ) {
+                $def = mk20_get_default_settings();
+                if ( isset( $def['bb_field_dni'] ) ) {
+                    $dni_field = $def['bb_field_dni'];
+                }
+            }
+            $options = get_option( 'mk20_cert_settings', array() );
+            if ( ! empty( $options['bb_field_dni'] ) ) {
+                $dni_field = $options['bb_field_dni'];
+            }
+            $dni_keys = array( 'dni', 'nif', 'nie', 'dni_nie' );
+            if ( $dni_field ) {
+                $slug_dni = strtolower( preg_replace( '/[^a-zA-Z0-9_]/', '_', $dni_field ) );
+                $slug_dni = trim( preg_replace( '/_+/', '_', $slug_dni ), '_' );
+                if ( $slug_dni ) {
+                    $dni_keys[] = $slug_dni;
+                }
+            }
+            $dni_keys = array_unique( array_filter( $dni_keys ) );
+            foreach ( $dni_keys as $dk ) {
+                $dids = get_users( array(
+                    'meta_key'     => $dk,
+                    'meta_value'   => $filter_name,
+                    'meta_compare' => 'LIKE',
+                    'fields'       => 'ID',
+                    'number'       => -1,
+                ) );
+                if ( ! empty( $dids ) ) {
+                    $search_ids = array_merge( $search_ids, array_map( 'absint', $dids ) );
+                }
+            }
+            if ( function_exists( 'xprofile_get_field_data' ) && $dni_field ) {
+                $users_all = get_users( array( 'fields' => array( 'ID' ), 'number' => -1 ) );
+                foreach ( $users_all as $u ) {
+                    $val = xprofile_get_field_data( $dni_field, $u->ID );
+                    if ( $val && false !== stripos( (string) $val, $filter_name ) ) {
+                        $search_ids[] = absint( $u->ID );
+                    }
+                }
+            }
+
+            $search_ids = array_values( array_unique( array_filter( $search_ids ) ) );
+            if ( empty( $search_ids ) ) {
+                $users = array();
+            } else {
+                $users_args['include'] = $search_ids;
+                $users = get_users( $users_args );
+            }
+        } else {
+            $users = get_users( $users_args );
+        }
 
         foreach ( $users as $user_id ) {
             $user_meta = get_user_meta( $user_id );
@@ -988,8 +1008,12 @@ class MK20_Admin {
         }
 
         $total_pages = ceil( $total / $per_page );
+        $base_url    = admin_url( 'admin.php?page=mk20-certificates' );
+        if ( '' !== $filter_name ) {
+            $base_url = add_query_arg( 'mk20_name_search', $filter_name, $base_url );
+        }
         $page_links  = paginate_links( [
-            'base'      => add_query_arg( 'paged', '%#%', admin_url( 'admin.php?page=mk20-certificates' ) ),
+            'base'      => add_query_arg( 'paged', '%#%', $base_url ),
             'format'    => '',
             'prev_text' => '&laquo;',
             'next_text' => '&raquo;',
@@ -1001,6 +1025,17 @@ class MK20_Admin {
         <div class="wrap">
             <h1 class="wp-heading-inline"><?php esc_html_e( 'Todos los Certificados', 'mk20-custom-certificates' ); ?></h1>
             <p class="description"><?php esc_html_e( 'Listado completo de certificados generados por el plugin en todos los usuarios.', 'mk20-custom-certificates' ); ?></p>
+
+            <div class="tablenav top" style="margin: 12px 0;">
+                <form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <input type="hidden" name="page" value="mk20-certificates" />
+                    <input type="text" name="mk20_name_search" value="<?php echo esc_attr( $filter_name ); ?>" placeholder="<?php esc_attr_e( 'Buscar por nombre/apellidos/DNI...', 'mk20-custom-certificates' ); ?>" class="regular-text" />
+                    <?php submit_button( __( 'Buscar', 'mk20-custom-certificates' ), 'secondary', '', false ); ?>
+                    <?php if ( '' !== $filter_name ) : ?>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=mk20-certificates' ) ); ?>" class="button"><?php esc_html_e( 'Quitar filtro', 'mk20-custom-certificates' ); ?></a>
+                    <?php endif; ?>
+                </form>
+            </div>
 
             <?php if ( empty( $results ) ) : ?>
                 <div class="notice notice-info"><p><?php esc_html_e( 'No hay certificados generados aún.', 'mk20-custom-certificates' ); ?></p></div>
@@ -1019,6 +1054,7 @@ class MK20_Admin {
                         <th style="width:40px;"><?php esc_html_e( 'ID', 'mk20-custom-certificates' ); ?></th>
                         <th><?php esc_html_e( 'Usuario', 'mk20-custom-certificates' ); ?></th>
                         <th><?php esc_html_e( 'Curso', 'mk20-custom-certificates' ); ?></th>
+                        <th style="width:80px;"><?php esc_html_e( 'ID Curso', 'mk20-custom-certificates' ); ?></th>
                         <th style="width:90px;"><?php esc_html_e( 'Tipo', 'mk20-custom-certificates' ); ?></th>
                         <th style="width:100px;"><?php esc_html_e( 'Fecha', 'mk20-custom-certificates' ); ?></th>
                         <th style="width:100px;"><?php esc_html_e( 'Descargar', 'mk20-custom-certificates' ); ?></th>
@@ -1028,20 +1064,15 @@ class MK20_Admin {
                 <tbody>
                 <?php foreach ( $results as $row ) :
                     $is_external = strpos( $row->mk20_key, '_mk20_ext_cert_path_' ) === 0;
-                    $user_info   = get_userdata( $row->user_id );
+                    $course_id    = 0;
+                    $user_info    = get_userdata( $row->user_id );
 
                     if ( ! $user_info ) {
                         continue;
                     }
 
-                    if ( $is_external ) {
-                        $hash         = str_replace( '_mk20_ext_cert_path_', '', $row->mk20_key );
-                        $course_title = get_user_meta( $row->user_id, '_mk20_ext_course_title_' . $hash, true );
-                        $cert_date    = get_user_meta( $row->user_id, '_mk20_ext_cert_date_' . $hash, true );
-                        $cert_fmt     = $cert_date ? date_i18n( 'd/m/Y', strtotime( $cert_date ) ) : '—';
-                        $download_url = wp_nonce_url( add_query_arg( [ 'ext_cert' => $hash, 'user_id' => $row->user_id ], admin_url( 'admin-post.php?action=mk20_download_ext_cert' ) ), 'mk20_download_ext_cert_' . $hash );
-                    } else {
-                        $course_id    = intval( str_replace( '_mk20_cert_path_', '', $row->mk20_key ) );
+                    if ( ! $is_external ) {
+                        $course_id = intval( str_replace( '_mk20_cert_path_', '', $row->mk20_key ) );
                         if ( ! $course_id ) {
                             continue;
                         }
@@ -1049,6 +1080,131 @@ class MK20_Admin {
                         $cert_date    = get_user_meta( $row->user_id, '_mk20_cert_date_' . $course_id, true );
                         $cert_fmt     = $cert_date ? date_i18n( 'd/m/Y', strtotime( $cert_date ) ) : '—';
                         $download_url = wp_nonce_url( add_query_arg( [ 'course_id' => $course_id, 'user_id' => $row->user_id ], admin_url( 'admin-post.php?action=mk20_download_cert' ) ), 'mk20_download_cert_' . $course_id );
+                    } else {
+                        $hash         = str_replace( '_mk20_ext_cert_path_', '', $row->mk20_key );
+                        $course_title = get_user_meta( $row->user_id, '_mk20_ext_course_title_' . $hash, true );
+                        $cert_date    = get_user_meta( $row->user_id, '_mk20_ext_cert_date_' . $hash, true );
+                        $course_id    = absint( get_user_meta( $row->user_id, '_mk20_ext_course_id_' . $hash, true ) );
+                        if ( ! $course_id ) {
+                            $extid = get_user_meta( $row->user_id, '_mk20_ext_cert_extid_' . $hash, true );
+                            if ( is_string( $extid ) && false !== strpos( $extid, '_' ) ) {
+                                $parts = explode( '_', $extid );
+                                $last  = end( $parts );
+                                if ( is_numeric( $last ) ) {
+                                    $course_id = absint( $last );
+                                    update_user_meta( $row->user_id, '_mk20_ext_course_id_' . $hash, $course_id );
+                                }
+                            }
+                        }
+                        if ( ! $course_id ) {
+                            $sync_state = get_user_meta( $row->user_id, '_mk20_ext_sync_state', true );
+                            if ( is_array( $sync_state ) ) {
+                                $lists = array();
+                                if ( ! empty( $sync_state['pending'] ) && is_array( $sync_state['pending'] ) ) {
+                                    $lists = array_merge( $lists, $sync_state['pending'] );
+                                }
+                                if ( ! empty( $sync_state['deferred'] ) && is_array( $sync_state['deferred'] ) ) {
+                                    foreach ( $sync_state['deferred'] as $d ) {
+                                        if ( isset( $d['item'] ) && is_array( $d['item'] ) ) {
+                                            $lists[] = $d['item'];
+                                        }
+                                    }
+                                }
+                                foreach ( $lists as $item ) {
+                                    if ( ! is_array( $item ) ) {
+                                        continue;
+                                    }
+                                    if ( isset( $item['hash'] ) && $item['hash'] === $hash ) {
+                                        if ( isset( $item['idFormacion'] ) ) {
+                                            $course_id = absint( $item['idFormacion'] );
+                                            if ( $course_id ) {
+                                                update_user_meta( $row->user_id, '_mk20_ext_course_id_' . $hash, $course_id );
+                                            }
+                                        }
+                                        if ( isset( $item['external_id'] ) && ! get_user_meta( $row->user_id, '_mk20_ext_cert_extid_' . $hash, true ) ) {
+                                            update_user_meta( $row->user_id, '_mk20_ext_cert_extid_' . $hash, sanitize_text_field( $item['external_id'] ) );
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if ( ! $course_id ) {
+                            $all_users = get_users( array( 'fields' => 'ID' ) );
+                            foreach ( $all_users as $au ) {
+                                $sync_state = get_user_meta( $au->ID, '_mk20_ext_sync_state', true );
+                                if ( ! is_array( $sync_state ) ) {
+                                    continue;
+                                }
+                                $lists = array();
+                                if ( ! empty( $sync_state['pending'] ) && is_array( $sync_state['pending'] ) ) {
+                                    $lists = array_merge( $lists, $sync_state['pending'] );
+                                }
+                                if ( ! empty( $sync_state['deferred'] ) && is_array( $sync_state['deferred'] ) ) {
+                                    foreach ( $sync_state['deferred'] as $d ) {
+                                        if ( isset( $d['item'] ) && is_array( $d['item'] ) ) {
+                                            $lists[] = $d['item'];
+                                        }
+                                    }
+                                }
+                                foreach ( $lists as $item ) {
+                                    if ( ! is_array( $item ) ) {
+                                        continue;
+                                    }
+                                    if ( isset( $item['hash'] ) && $item['hash'] === $hash ) {
+                                        if ( isset( $item['idFormacion'] ) ) {
+                                            $course_id = absint( $item['idFormacion'] );
+                                            if ( $course_id ) {
+                                                update_user_meta( $row->user_id, '_mk20_ext_course_id_' . $hash, $course_id );
+                                                update_user_meta( $row->user_id, '_mk20_ext_cert_extid_' . $hash, isset( $item['external_id'] ) ? sanitize_text_field( $item['external_id'] ) : $course_id );
+                                            }
+                                        }
+                                        if ( isset( $item['external_id'] ) && ! get_user_meta( $row->user_id, '_mk20_ext_cert_extid_' . $hash, true ) ) {
+                                            update_user_meta( $row->user_id, '_mk20_ext_cert_extid_' . $hash, sanitize_text_field( $item['external_id'] ) );
+                                        }
+                                        break 2;
+                                    }
+                                }
+                            }
+                        }
+                        if ( ! $course_id ) {
+                            $all_users = get_users( array( 'fields' => 'ID' ) );
+                            foreach ( $all_users as $au ) {
+                                $user_meta_all = get_user_meta( $au->ID );
+                                foreach ( $user_meta_all as $mkey => $mvals ) {
+                                    if ( 0 !== strpos( $mkey, '_mk20_ext_cert_extid_' ) ) {
+                                        continue;
+                                    }
+                                    $mhash = str_replace( '_mk20_ext_cert_extid_', '', $mkey );
+                                    if ( $mhash !== $hash ) {
+                                        continue;
+                                    }
+                                    foreach ( (array) $mvals as $mval ) {
+                                        $mval = (string) $mval;
+                                        if ( '' === $mval ) {
+                                            continue;
+                                        }
+                                        if ( false !== strpos( $mval, '_' ) ) {
+                                            $parts = explode( '_', $mval );
+                                            $last  = end( $parts );
+                                            if ( is_numeric( $last ) ) {
+                                                $course_id = absint( $last );
+                                                update_user_meta( $row->user_id, '_mk20_ext_course_id_' . $hash, $course_id );
+                                                update_user_meta( $row->user_id, '_mk20_ext_cert_extid_' . $hash, sanitize_text_field( $mval ) );
+                                                break 2;
+                                            }
+                                        }
+                                        if ( is_numeric( $mval ) ) {
+                                            $course_id = absint( $mval );
+                                            update_user_meta( $row->user_id, '_mk20_ext_course_id_' . $hash, $course_id );
+                                            break 2;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+        $cert_fmt     = $cert_date ? date_i18n( 'd/m/Y', strtotime( $cert_date ) ) : '—';
+                        $download_url = wp_nonce_url( add_query_arg( [ 'ext_cert' => $hash, 'user_id' => $row->user_id ], admin_url( 'admin-post.php?action=mk20_download_ext_cert' ) ), 'mk20_download_ext_cert_' . $hash );
                     }
 
                     $user_name   = $user_info->display_name;
@@ -1064,6 +1220,24 @@ class MK20_Admin {
                             </a>
                         </td>
                         <td><?php echo esc_html( $course_title ?: '—' ); ?></td>
+                        <td>
+                            <?php if ( $is_external ) : ?>
+                                <?php if ( $course_id ) : ?>
+                                    <?php echo absint( $course_id ); ?>
+                                <?php else : ?>
+                                    <?php $ext_nonce = wp_create_nonce( 'mk20_set_ext_course_id_' . $hash ); ?>
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin:0;">
+                                        <input type="hidden" name="action" value="mk20_set_ext_course_id" />
+                                        <input type="hidden" name="user_id" value="<?php echo absint( $row->user_id ); ?>" />
+                                        <input type="hidden" name="hash" value="<?php echo esc_attr( $hash ); ?>" />
+                                        <input type="hidden" name="_wpnonce" value="<?php echo esc_attr( $ext_nonce ); ?>" />
+                                        <input type="number" name="course_id" value="" class="small-text" style="width:70px;" onchange="this.form.submit();" placeholder="ID" />
+                                    </form>
+                                <?php endif; ?>
+                            <?php else : ?>
+                                <?php echo absint( $course_id ); ?>
+                            <?php endif; ?>
+                        </td>
                         <td><span class="mk20-badge <?php echo $is_external ? 'mk20-badge-ext' : 'mk20-badge-native'; ?>"><?php echo $is_external ? esc_html__( 'Externo', 'mk20-custom-certificates' ) : esc_html__( 'Online', 'mk20-custom-certificates' ); ?></span></td>
                         <td><?php echo esc_html( $cert_fmt ); ?></td>
                         <td>
@@ -1292,8 +1466,33 @@ class MK20_Admin {
     }
 
     /**
-     * Guarda los datos del Meta Box al guardar el curso
+     * Guarda manualmente el ID de formación/curso para certificados externos.
      */
+    public function save_ext_course_id() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'No tienes permisos suficientes.', 'mk20-custom-certificates' ) );
+        }
+
+        $user_id   = isset( $_POST['user_id'] ) ? absint( wp_unslash( $_POST['user_id'] ) ) : 0;
+        $hash      = isset( $_POST['hash'] ) ? sanitize_text_field( wp_unslash( $_POST['hash'] ) ) : '';
+        $course_id = isset( $_POST['course_id'] ) ? absint( wp_unslash( $_POST['course_id'] ) ) : 0;
+        $nonce     = isset( $_POST['_wpnonce'] ) ? wp_unslash( $_POST['_wpnonce'] ) : '';
+
+        if ( ! $user_id || ! $hash || ! $course_id ) {
+            wp_safe_redirect( wp_get_referer() ?: admin_url( 'admin.php?page=mk20-certificates' ) );
+            exit;
+        }
+
+        if ( ! wp_verify_nonce( $nonce, 'mk20_set_ext_course_id_' . $hash ) ) {
+            wp_die( esc_html__( 'Nonce inválido.', 'mk20-custom-certificates' ) );
+        }
+
+        update_user_meta( $user_id, '_mk20_ext_course_id_' . $hash, $course_id );
+        update_user_meta( $user_id, '_mk20_ext_cert_extid_' . $hash, (string) $course_id );
+
+        wp_safe_redirect( wp_get_referer() ?: admin_url( 'admin.php?page=mk20-certificates' ) );
+        exit;
+    }
     public function save_course_meta( $post_id ) {
         // Verificar nonce de seguridad
         if ( ! isset( $_POST['mk20_course_meta_nonce'] ) || ! wp_verify_nonce( wp_unslash( $_POST['mk20_course_meta_nonce'] ), 'mk20_save_course_meta_action' ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
