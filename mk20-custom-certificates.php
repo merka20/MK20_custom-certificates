@@ -881,6 +881,7 @@ function mk20_sync_user_event_handler( $user_id ) {
 
 add_action( 'admin_post_mk20_delete_cert', 'mk20_handle_delete_cert' );
 add_action( 'admin_post_mk20_delete_ext_cert', 'mk20_handle_delete_ext_cert' );
+add_action( 'admin_post_mk20_bulk_delete_ext_certs', 'mk20_handle_bulk_delete_ext_certs' );
 
 function mk20_handle_delete_cert() {
     if ( ! current_user_can( 'manage_options' ) ) {
@@ -965,9 +966,120 @@ function mk20_handle_delete_ext_cert() {
         delete_user_meta( $user_id, $prefix . $hash );
     }
 
+    // Limpiar caché de sincronización externa para forzar re-listado desde API
+    delete_user_meta( $user_id, '_mk20_ext_sync_state' );
+
     mk20_api_audit_log( "DELETE_CERT user_id={$user_id} hash={$hash} tipo=externa" );
 
     $redirect = add_query_arg( 'cert_deleted', '1', wp_get_referer() );
+    wp_safe_redirect( $redirect );
+    exit;
+}
+
+function mk20_handle_bulk_delete_ext_certs() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'No tienes permisos para realizar esta acción.', 'mk20-custom-certificates' ) );
+    }
+
+    $nonce = isset( $_POST['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ) : '';
+    if ( ! wp_verify_nonce( $nonce, 'mk20_bulk_delete_ext_certs' ) ) {
+        wp_die( esc_html__( 'Nonce inválido.', 'mk20-custom-certificates' ) );
+    }
+
+    $certs_raw = isset( $_POST['ext_certs'] ) ? sanitize_text_field( wp_unslash( $_POST['ext_certs'] ) ) : '';
+    $certs     = array_filter( array_map( 'trim', explode( ',', $certs_raw ) ) );
+    if ( empty( $certs ) ) {
+        set_transient( 'mk20_cert_bulk_delete_error', __( 'No se seleccionaron certificados.', 'mk20-custom-certificates' ), 30 );
+        wp_safe_redirect( wp_get_referer() );
+        exit;
+    }
+
+    $deleted_ext = 0;
+    $deleted_native = 0;
+
+    foreach ( $certs as $cert_ref ) {
+        $parts = explode( '|', $cert_ref, 3 );
+        if ( count( $parts ) !== 3 ) {
+            continue;
+        }
+        $type   = sanitize_text_field( wp_unslash( $parts[0] ) );
+        $id     = sanitize_text_field( wp_unslash( $parts[1] ) );
+        $user_id = absint( $parts[2] );
+
+        if ( ! $user_id ) {
+            continue;
+        }
+
+        if ( 'ext' === $type ) {
+            if ( empty( $id ) || strlen( $id ) !== 32 ) {
+                continue;
+            }
+            $hash = $id;
+
+            $file_path = get_user_meta( $user_id, '_mk20_ext_cert_path_' . $hash, true );
+            if ( $file_path && file_exists( $file_path ) ) {
+                wp_delete_file( $file_path );
+            }
+
+            $attachment_id = get_user_meta( $user_id, '_mk20_ext_cert_attachment_id_' . $hash, true );
+            if ( $attachment_id ) {
+                wp_delete_attachment( $attachment_id, true );
+            }
+
+            $meta_keys = [ '_mk20_ext_cert_path_', '_mk20_ext_cert_date_', '_mk20_ext_cert_url_', '_mk20_ext_course_title_', '_mk20_ext_cert_hash_', '_mk20_ext_cert_ts_', '_mk20_ext_cert_attachment_id_' ];
+            foreach ( $meta_keys as $prefix ) {
+                delete_user_meta( $user_id, $prefix . $hash );
+            }
+
+            // Limpiar caché de sincronización externa para forzar re-listado desde API
+            delete_user_meta( $user_id, '_mk20_ext_sync_state' );
+
+            mk20_api_audit_log( "DELETE_CERT user_id={$user_id} hash={$hash} tipo=externa_bulk" );
+            $deleted_ext++;
+        } elseif ( 'native' === $type ) {
+            $course_id = absint( $id );
+            if ( ! $course_id ) {
+                continue;
+            }
+
+            $attachment_id = get_user_meta( $user_id, '_mk20_cert_attachment_id_' . $course_id, true );
+            $file_path     = get_user_meta( $user_id, '_mk20_cert_path_' . $course_id, true );
+
+            if ( $file_path && file_exists( $file_path ) ) {
+                wp_delete_file( $file_path );
+            }
+
+            if ( $attachment_id && get_post( $attachment_id ) ) {
+                wp_delete_attachment( $attachment_id, true );
+            }
+
+            $meta_keys = [ '_mk20_cert_path_', '_mk20_cert_date_', '_mk20_cert_url_', '_mk20_cert_hash_', '_mk20_cert_ts_', '_mk20_cert_verify_', '_mk20_cert_attachment_id_', '_mk20_cert_uploaded_id_' ];
+            foreach ( $meta_keys as $prefix ) {
+                delete_user_meta( $user_id, $prefix . $course_id );
+            }
+
+            mk20_remove_certificate_index( $user_id, $course_id );
+            mk20_api_audit_log( "DELETE_CERT user_id={$user_id} course_id={$course_id} tipo=nativa_bulk" );
+            $deleted_native++;
+        }
+    }
+
+    $deleted = $deleted_ext + $deleted_native;
+    if ( $deleted > 0 ) {
+        $msg = '';
+        if ( $deleted_ext > 0 && $deleted_native > 0 ) {
+            $msg = sprintf( _n( '%d certificado eliminado.', '%d certificados eliminados.', $deleted, 'mk20-custom-certificates' ), $deleted );
+        } elseif ( $deleted_ext > 0 ) {
+            $msg = sprintf( _n( '%d certificado externo eliminado.', '%d certificados externos eliminados.', $deleted_ext, 'mk20-custom-certificates' ), $deleted_ext );
+        } else {
+            $msg = sprintf( _n( '%d certificado eliminado.', '%d certificados eliminados.', $deleted_native, 'mk20-custom-certificates' ), $deleted_native );
+        }
+        set_transient( 'mk20_cert_bulk_deleted_notice', $msg, 30 );
+    } else {
+        set_transient( 'mk20_cert_bulk_delete_error', __( 'No se pudo eliminar ningún certificado.', 'mk20-custom-certificates' ), 30 );
+    }
+
+    $redirect = add_query_arg( 'cert_bulk_deleted', '1', wp_get_referer() );
     wp_safe_redirect( $redirect );
     exit;
 }

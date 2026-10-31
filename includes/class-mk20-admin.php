@@ -77,7 +77,7 @@ class MK20_Admin {
             return;
         }
 
-        $settings_url = admin_url( 'options-general.php?page=mk20-certificates' );
+        $settings_url = admin_url( 'options-general.php?page=mk20-certificates-settings' );
         ?>
         <div class="notice notice-warning is-dismissible">
             <p>
@@ -1048,9 +1048,29 @@ class MK20_Admin {
                 </div>
             <?php endif; ?>
 
+            <?php
+            $bulk_deleted = get_transient( 'mk20_cert_bulk_deleted_notice' );
+            $bulk_error   = get_transient( 'mk20_cert_bulk_delete_error' );
+            delete_transient( 'mk20_cert_bulk_deleted_notice' );
+            delete_transient( 'mk20_cert_bulk_delete_error' );
+            if ( $bulk_deleted ) : ?>
+                <div class="notice notice-success is-dismissible"><p><?php echo esc_html( $bulk_deleted ); ?></p></div>
+            <?php elseif ( $bulk_error ) : ?>
+                <div class="notice notice-error is-dismissible"><p><?php echo esc_html( $bulk_error ); ?></p></div>
+            <?php endif; ?>
+
+            <div class="tablenav top" style="margin: 12px 0;">
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php?action=mk20_bulk_delete_ext_certs' ) ); ?>" style="display:inline-block; margin-left:8px;" onsubmit="return confirm('<?php echo esc_js( __( '¿Eliminar los certificados externos seleccionados permanentemente?', 'mk20-custom-certificates' ) ); ?>');">
+                    <?php wp_nonce_field( 'mk20_bulk_delete_ext_certs' ); ?>
+                    <input type="hidden" name="ext_certs" id="mk20_bulk_ext_certs" value="" />
+                    <button type="submit" class="button button-small" style="background:#ef4444;color:#fff;border:none;" id="mk20_bulk_delete_btn" disabled><?php esc_html_e( 'Eliminar seleccionados', 'mk20-custom-certificates' ); ?></button>
+                </form>
+            </div>
+
             <table class="wp-list-table widefat fixed striped">
                 <thead>
                     <tr>
+                        <th style="width:40px;"><input type="checkbox" id="mk20_select_all_ext" style="width:auto;" /></th>
                         <th style="width:40px;"><?php esc_html_e( 'ID', 'mk20-custom-certificates' ); ?></th>
                         <th><?php esc_html_e( 'Usuario', 'mk20-custom-certificates' ); ?></th>
                         <th><?php esc_html_e( 'Curso', 'mk20-custom-certificates' ); ?></th>
@@ -1212,6 +1232,11 @@ class MK20_Admin {
                     $profile_url = bp_core_get_userlink( $row->user_id, false, true );
                     ?>
                     <tr>
+                        <?php if ( $is_external ) : ?>
+                            <td style="width:40px;"><input type="checkbox" name="mk20_ext_cert[]" class="mk20_ext_cert_cb" value="ext|<?php echo esc_attr( $hash . '|' . $row->user_id ); ?>" /></td>
+                        <?php else : ?>
+                            <td style="width:40px;"><input type="checkbox" name="mk20_ext_cert[]" class="mk20_ext_cert_cb" value="native|<?php echo absint( $course_id ) . '|' . $row->user_id; ?>" /></td>
+                        <?php endif; ?>
                         <td><?php echo absint( $row->user_id ); ?></td>
                         <td>
                             <a href="<?php echo esc_url( $profile_url ? $profile_url : $user_url ); ?>" target="_blank">
@@ -1296,6 +1321,40 @@ class MK20_Admin {
             }
             .mk20-certificates-table td { vertical-align: middle; }
         </style>
+        <script>
+        (function() {
+            var selectAll = document.getElementById('mk20_select_all_ext');
+            var cbs = document.querySelectorAll('.mk20_ext_cert_cb');
+            var bulkBtn = document.getElementById('mk20_bulk_delete_btn');
+            var bulkInput = document.getElementById('mk20_bulk_ext_certs');
+            var bulkForm = document.querySelector('form[action*="mk20_bulk_delete_ext_certs"]');
+
+            if ( ! selectAll || ! bulkBtn || ! bulkInput || ! bulkForm ) {
+                return;
+            }
+
+            function updateBtn() {
+                var checked = document.querySelectorAll('.mk20_ext_cert_cb:checked');
+                bulkBtn.disabled = checked.length === 0;
+                bulkInput.value = Array.from(checked).map(function(cb) { return cb.value; }).join(',');
+            }
+
+            selectAll.addEventListener('change', function() {
+                cbs.forEach(function(cb) { cb.checked = selectAll.checked; });
+                updateBtn();
+            });
+
+            cbs.forEach(function(cb) {
+                cb.addEventListener('change', updateBtn);
+            });
+
+            bulkForm.addEventListener('submit', function() {
+                updateBtn();
+            });
+
+            updateBtn();
+        })();
+        </script>
         <?php
     }
 
