@@ -77,7 +77,7 @@ class MK20_Admin {
             return;
         }
 
-        $settings_url = admin_url( 'options-general.php?page=mk20-certificates-settings' );
+        $settings_url = admin_url( 'admin.php?page=mk20-certificates-settings' );
         ?>
         <div class="notice notice-warning is-dismissible">
             <p>
@@ -1152,7 +1152,7 @@ class MK20_Admin {
                         if ( ! $course_id ) {
                             $all_users = get_users( array( 'fields' => 'ID' ) );
                             foreach ( $all_users as $au ) {
-                                $sync_state = get_user_meta( $au->ID, '_mk20_ext_sync_state', true );
+                                $sync_state = get_user_meta( absint( $au ), '_mk20_ext_sync_state', true );
                                 if ( ! is_array( $sync_state ) ) {
                                     continue;
                                 }
@@ -1190,7 +1190,7 @@ class MK20_Admin {
                         if ( ! $course_id ) {
                             $all_users = get_users( array( 'fields' => 'ID' ) );
                             foreach ( $all_users as $au ) {
-                                $user_meta_all = get_user_meta( $au->ID );
+                                $user_meta_all = get_user_meta( absint( $au ) );
                                 foreach ( $user_meta_all as $mkey => $mvals ) {
                                     if ( 0 !== strpos( $mkey, '_mk20_ext_cert_extid_' ) ) {
                                         continue;

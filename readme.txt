@@ -3,7 +3,7 @@ Contributors: merka20
 Tags: certificates, learndash, buddypress, pdf, fpdf
 Requires at least: 5.0
 Tested up to: 7.1
-Stable tag: 1.4.9
+Stable tag: 1.4.10
 Requires PHP: 7.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -24,6 +24,10 @@ Certificates can also be uploaded automatically to an external API via POST mult
 3. Go to Settings → MK20 Certificates to configure
 
 == Changelog ==
+
+= 1.4.10 =
+* Fix: "Reset to defaults" and "Dismiss rejected certificates" redirected to a page that does not exist, ending in a "Cannot load mk20-certificates" error
+* Fix: the fallback lookup of the external certificate sync state read the user ID as an object, which raised a PHP warning for every user and never recovered the sync state
 
 = 1.4.9 =
 * New "Check again" button next to the Ghostscript status: clears the 12-hour cache and re-detects it without saving the settings

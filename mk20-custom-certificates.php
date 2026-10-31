@@ -3,7 +3,7 @@
  * Plugin Name: MK20 Custom Certificates
  * Plugin URI:  https://github.com/merka20/MK20_custom-certificates
  * Description: Genera certificados PDF de dos caras (anverso y reverso) personalizados mediante FPDF al completar cursos de LearnDash.
- * Version:     1.4.9
+ * Version:     1.4.10
  * Author:      Merka2.0
  * Author URI:  https://merka20.com
  * License:     GPL-2.0-or-later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'MK20_CERT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MK20_CERT_URL', plugin_dir_url( __FILE__ ) );
-define( 'MK20_CERT_VERSION', '1.4.9' );
+define( 'MK20_CERT_VERSION', '1.4.10' );
 define( 'MK20_CERT_DB_VERSION', '1.0.0' );
 
 if ( ! defined( 'MK20_EXT_API_URL' ) ) {
@@ -309,7 +309,7 @@ function mk20_recheck_gs_binary() {
 
     delete_transient( 'mk20_gs_binary' );
 
-    wp_safe_redirect( admin_url( 'options-general.php?page=mk20-certificates' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=mk20-certificates' ) );
     exit;
 }
 
@@ -321,7 +321,7 @@ function mk20_dismiss_rejected_certificates() {
         wp_die( esc_html__( 'Enlace inválido o expirado.', 'mk20-custom-certificates' ) );
     }
     delete_option( 'mk20_rejected_certificates' );
-    wp_safe_redirect( admin_url( 'options-general.php?page=mk20-certificates' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=mk20-certificates' ) );
     exit;
 }
 
@@ -433,7 +433,7 @@ function mk20_reset_to_defaults() {
 
     delete_option( 'mk20_cert_settings' );
     set_transient( 'mk20_cert_reset_notice', __( 'Ajustes restaurados a los valores por defecto.', 'mk20-custom-certificates' ), 30 );
-    wp_safe_redirect( admin_url( 'options-general.php?page=mk20-certificates' ) );
+    wp_safe_redirect( admin_url( 'admin.php?page=mk20-certificates' ) );
     exit;
 }
 
