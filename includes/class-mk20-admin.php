@@ -1007,6 +1007,13 @@ class MK20_Admin {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $deleted_notice ) . '</p></div>';
         }
 
+        $regen_notice_key = 'mk20_cert_regen_notice_' . get_current_user_id();
+        $regen_notice     = get_transient( $regen_notice_key );
+        if ( $regen_notice ) {
+            delete_transient( $regen_notice_key );
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $regen_notice ) . '</p></div>';
+        }
+
         $total_pages = ceil( $total / $per_page );
         $base_url    = admin_url( 'admin.php?page=mk20-certificates' );
         if ( '' !== $filter_name ) {
@@ -1273,7 +1280,14 @@ class MK20_Admin {
                         <td>
                             <?php if ( ! $is_external ) :
                                 $delete_url = wp_nonce_url( add_query_arg( [ 'course_id' => $course_id, 'user_id' => $row->user_id ], admin_url( 'admin-post.php?action=mk20_delete_cert' ) ), 'mk20_delete_cert_' . $course_id );
+                                $regenerate_url = wp_nonce_url( add_query_arg( [ 'course_id' => $course_id, 'user_id' => $row->user_id ], admin_url( 'admin-post.php?action=mk20_regenerate_cert' ) ), 'mk20_regenerate_cert_' . $course_id . '_' . $row->user_id );
                                 ?>
+                                <a href="<?php echo esc_url( $regenerate_url ); ?>"
+                                   class="button button-small"
+                                   style="background:#2563eb;color:#fff;border:none;text-decoration:none;margin-right:4px;"
+                                   onclick="return confirm('<?php echo esc_js( __( '¿Regenerar este certificado con los datos actuales del alumno? Se mantiene la fecha de emisión original.', 'mk20-custom-certificates' ) ); ?>');">
+                                    <?php esc_html_e( 'Regenerar', 'mk20-custom-certificates' ); ?>
+                                </a>
                                 <a href="<?php echo esc_url( $delete_url ); ?>"
                                    class="button button-small"
                                    style="background:#ef4444;color:#fff;border:none;text-decoration:none;"

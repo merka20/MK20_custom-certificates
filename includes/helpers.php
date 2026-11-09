@@ -130,6 +130,102 @@ function mk20_course_certificate_enabled( $course_id ) {
 }
 
 /**
+ * Regenera el certificado nativo de un usuario para un curso.
+ *
+ * Mantiene la fecha de emisión original guardada, ignora el interruptor
+ * "No generar certificado" (es una acción manual del administrador) y no
+ * reenvía el PDF a la API externa.
+ *
+ * @param int $user_id   ID del usuario.
+ * @param int $course_id ID del curso.
+ * @return true|WP_Error True si se regeneró, WP_Error en caso contrario.
+ */
+function mk20_regenerate_certificate( $user_id, $course_id ) {
+    $user_id   = absint( $user_id );
+    $course_id = absint( $course_id );
+
+    if ( ! $user_id || ! $course_id ) {
+        return new WP_Error( 'mk20_regen_invalid', __( 'Usuario o curso no válido.', 'mk20-custom-certificates' ) );
+    }
+
+    $user = get_userdata( $user_id );
+    if ( ! $user ) {
+        return new WP_Error( 'mk20_regen_user', __( 'El usuario no existe.', 'mk20-custom-certificates' ) );
+    }
+
+    if ( 'sfwd-courses' !== get_post_type( $course_id ) ) {
+        return new WP_Error( 'mk20_regen_course', __( 'El curso no existe.', 'mk20-custom-certificates' ) );
+    }
+
+    if ( ! class_exists( 'MK20_PDF_Engine' ) ) {
+        return new WP_Error( 'mk20_regen_engine', __( 'El motor PDF no está disponible.', 'mk20-custom-certificates' ) );
+    }
+
+    $student_name = mk20_get_student_name( $user_id );
+    $course_title = mk20_clean_course_title( get_the_title( $course_id ) );
+
+    $stored_date = (string) get_user_meta( $user_id, '_mk20_cert_date_' . $course_id, true );
+    $timestamp   = '' !== $stored_date ? strtotime( $stored_date ) : 0;
+
+    // Mantener la fecha de emisión original; si no hay, usar la actual.
+    $issue_date = $timestamp > 0 ? date_i18n( 'd/m/Y', $timestamp ) : date_i18n( 'd/m/Y' );
+
+    $previous_path = (string) get_user_meta( $user_id, '_mk20_cert_path_' . $course_id, true );
+
+    $engine   = new MK20_PDF_Engine();
+    $pdf_path = $engine->generate( $student_name, $course_title, $issue_date, $user_id, $course_id );
+
+    if ( ! $pdf_path ) {
+        return new WP_Error( 'mk20_regen_pdf', __( 'No se pudo generar el PDF del certificado.', 'mk20-custom-certificates' ) );
+    }
+
+    update_user_meta( $user_id, '_mk20_cert_path_' . $course_id, $pdf_path );
+    update_user_meta(
+        $user_id,
+        '_mk20_cert_date_' . $course_id,
+        $timestamp > 0 ? $stored_date : current_time( 'mysql' )
+    );
+
+    $integrity_hash = $engine->get_last_integrity_hash();
+    $verify_hash    = $engine->get_last_verify_hash();
+
+    if ( $integrity_hash ) {
+        update_user_meta( $user_id, '_mk20_cert_hash_' . $course_id, $integrity_hash );
+
+        // Conservar tambien el sello temporal original de emision que muestra
+        // la pagina publica de verificacion.
+        update_user_meta(
+            $user_id,
+            '_mk20_cert_ts_' . $course_id,
+            $timestamp > 0 && '' !== $stored_date ? get_gmt_from_date( $stored_date, 'Y-m-d\TH:i:s\Z' ) : $engine->get_last_timestamp()
+        );
+
+        update_user_meta( $user_id, '_mk20_cert_verify_' . $course_id, $verify_hash );
+
+        // Conservar la fecha de emision original en el indice publico.
+        $issued_at = $timestamp > 0 && '' !== $stored_date ? $stored_date : current_time( 'mysql' );
+
+        mk20_index_certificate( $user_id, $course_id, $verify_hash, $issued_at );
+    }
+
+    $upload_dir = wp_upload_dir();
+    update_user_meta(
+        $user_id,
+        '_mk20_cert_url_' . $course_id,
+        $upload_dir['baseurl'] . '/mk20-certificates/' . basename( $pdf_path )
+    );
+
+    // Si el nombre del archivo cambió, retirar el PDF anterior para no dejar huérfanos.
+    if ( '' !== $previous_path && $previous_path !== $pdf_path && file_exists( $previous_path ) ) {
+        wp_delete_file( $previous_path );
+    }
+
+    mk20_update_certificate_attachment( $pdf_path, $user_id, $course_id, $course_title, $student_name );
+
+    return true;
+}
+
+/**
  * Comprueba (con caché por petición) si existe la tabla de actividad de LearnDash.
  *
  * @return bool
@@ -1135,24 +1231,52 @@ function mk20_ensure_cert_index_table() {
 /**
  * Inserta o actualiza el indice de un certificado nativo.
  *
+ * Mantiene la fila existente (id y fecha de emision) cuando el certificado ya
+ * estaba indexado, para que una regeneracion no altere los datos publicos.
+ *
  * @param int    $user_id     ID del usuario.
  * @param int    $course_id   ID del curso.
  * @param string $verify_hash Hash SHA-256 de verificacion.
+ * @param string $issued_at   Fecha de emision en formato MySQL. Vacio = ahora.
  */
-function mk20_index_certificate( $user_id, $course_id, $verify_hash ) {
+function mk20_index_certificate( $user_id, $course_id, $verify_hash, $issued_at = '' ) {
     if ( empty( $verify_hash ) ) {
         return;
     }
 
     global $wpdb;
 
-    $wpdb->replace( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Escritura UPSERT sobre tabla propia; no aplica cache de lectura.
-        mk20_get_cert_index_table(),
+    $table     = mk20_get_cert_index_table();
+    $user_id   = absint( $user_id );
+    $course_id = absint( $course_id );
+    $code_hash = strtolower( sanitize_text_field( $verify_hash ) );
+    $issued_at = '' !== (string) $issued_at ? (string) $issued_at : current_time( 'mysql' );
+
+    $existing_id = (int) $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Tabla propia construida desde $wpdb->prefix y valores preparados.
+        $wpdb->prepare( "SELECT id FROM {$table} WHERE user_id = %d AND course_id = %d LIMIT 1", $user_id, $course_id )
+    );
+
+    if ( $existing_id ) {
+        $wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Escritura sobre tabla propia; no aplica cache de lectura.
+            $table,
+            array(
+                'code_hash' => $code_hash,
+                'issued_at' => $issued_at,
+            ),
+            array( 'id' => $existing_id ),
+            array( '%s', '%s' ),
+            array( '%d' )
+        );
+        return;
+    }
+
+    $wpdb->insert( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Escritura sobre tabla propia; no aplica cache de lectura.
+        $table,
         array(
-            'user_id'   => absint( $user_id ),
-            'course_id' => absint( $course_id ),
-            'code_hash' => strtolower( sanitize_text_field( $verify_hash ) ),
-            'issued_at' => current_time( 'mysql' ),
+            'user_id'   => $user_id,
+            'course_id' => $course_id,
+            'code_hash' => $code_hash,
+            'issued_at' => $issued_at,
         ),
         array( '%d', '%d', '%s', '%s' )
     );
