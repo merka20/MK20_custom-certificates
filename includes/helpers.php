@@ -260,8 +260,8 @@ function mk20_get_default_settings() {
 
         // Mapeo de BuddyBoss
         'bb_field_dni'     => 'DNI/NIE',
-        'bb_field_company' => 'Empresa',
-        'bb_field_cif'     => 'CIF',
+        'bb_field_company' => 'Centro',
+        'bb_field_cif'     => 'CIF Centro',
 
         // Fallbacks
         'fallback_dni'             => '44123456X',
