@@ -1,7 +1,3 @@
-*.zip
-.DS_Store
-Thumbs.db
-docs/
-# Documentación API LaresFormación (referencia local, no versionar)
-documento_formacion.pdf
-*.docx
+.kilo/
+/lib/fpdf/makefont/
+/lib/fpdf/fpdf.css
