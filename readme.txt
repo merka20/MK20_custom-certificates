@@ -3,7 +3,7 @@ Contributors: merka20
 Tags: certificates, learndash, buddypress, pdf, fpdf
 Requires at least: 5.0
 Tested up to: 7.1
-Stable tag: 1.4.10
+Stable tag: 1.4.10.1
 Requires PHP: 7.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -24,6 +24,10 @@ Certificates can also be uploaded automatically to an external API via POST mult
 3. Go to Settings → MK20 Certificates to configure
 
 == Changelog ==
+
+= 1.4.10.1 =
+* New "Regenerar" button for native certificates in the admin list: rebuilds the PDF with the current student/profile data, keeps the original issue date and refreshes the verification hash, index and media attachment
+* Manual regeneration ignores the per-course "No generar certificado" switch and does not resend the certificate to the external API
 
 = 1.4.10 =
 * Fix: "Reset to defaults" and "Dismiss rejected certificates" redirected to a page that does not exist, ending in a "Cannot load mk20-certificates" error

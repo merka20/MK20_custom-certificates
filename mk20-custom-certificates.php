@@ -3,7 +3,7 @@
  * Plugin Name: MK20 Custom Certificates
  * Plugin URI:  https://github.com/merka20/MK20_custom-certificates
  * Description: Genera certificados PDF de dos caras (anverso y reverso) personalizados mediante FPDF al completar cursos de LearnDash.
- * Version:     1.4.10
+ * Version:     1.4.10.1
  * Author:      Merka2.0
  * Author URI:  https://merka20.com
  * License:     GPL-2.0-or-later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'MK20_CERT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MK20_CERT_URL', plugin_dir_url( __FILE__ ) );
-define( 'MK20_CERT_VERSION', '1.4.10' );
+define( 'MK20_CERT_VERSION', '1.4.10.1' );
 define( 'MK20_CERT_DB_VERSION', '1.0.0' );
 
 if ( ! defined( 'MK20_EXT_API_URL' ) ) {
@@ -417,6 +417,41 @@ function mk20_register_certificate_attachment( $pdf_path, $user_id, $course_id, 
     update_post_meta( $attach_id, '_mk20_cert_course_id', $course_id );
 
     update_user_meta( $user_id, '_mk20_cert_attachment_id_' . $course_id, $attach_id );
+}
+
+/**
+ * Actualiza el attachment de un certificado ya registrado en la biblioteca.
+ *
+ * Si no existe todavía, lo registra como nuevo.
+ *
+ * @param string $pdf_path     Ruta del PDF regenerado.
+ * @param int    $user_id      ID del usuario.
+ * @param int    $course_id    ID del curso.
+ * @param string $course_title Título del curso.
+ * @param string $student_name Nombre del alumno.
+ */
+function mk20_update_certificate_attachment( $pdf_path, $user_id, $course_id, $course_title, $student_name ) {
+    $attachment_id = (int) get_user_meta( $user_id, '_mk20_cert_attachment_id_' . $course_id, true );
+
+    if ( ! $attachment_id || ! get_post( $attachment_id ) ) {
+        mk20_register_certificate_attachment( $pdf_path, $user_id, $course_id, $course_title, $student_name );
+        return;
+    }
+
+    $filetype = wp_check_filetype( basename( $pdf_path ), null );
+
+    wp_update_post(
+        array(
+            'ID'             => $attachment_id,
+            'post_title'     => sprintf( 'Certificado: %s — %s', $student_name, mk20_clean_course_title( $course_title ) ),
+            'post_mime_type' => $filetype['type'] ? $filetype['type'] : 'application/pdf',
+            'guid'           => $pdf_path,
+        )
+    );
+
+    update_post_meta( $attachment_id, '_wp_attached_file', str_replace( WP_CONTENT_DIR . '/', '', $pdf_path ) );
+    update_post_meta( $attachment_id, '_mk20_cert_user_id', $user_id );
+    update_post_meta( $attachment_id, '_mk20_cert_course_id', $course_id );
 }
 
 /**
@@ -881,7 +916,49 @@ function mk20_sync_user_event_handler( $user_id ) {
 
 add_action( 'admin_post_mk20_delete_cert', 'mk20_handle_delete_cert' );
 add_action( 'admin_post_mk20_delete_ext_cert', 'mk20_handle_delete_ext_cert' );
+add_action( 'admin_post_mk20_regenerate_cert', 'mk20_handle_regenerate_cert' );
 add_action( 'admin_post_mk20_bulk_delete_ext_certs', 'mk20_handle_bulk_delete_ext_certs' );
+
+/**
+ * Regenera manualmente un certificado nativo desde el panel de administración.
+ *
+ * Conserva la fecha de emisión original y actualiza el PDF, sus metadatos y el
+ * índice de verificación, sin reenviarlo a la API externa.
+ */
+function mk20_handle_regenerate_cert() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'No tienes permisos para realizar esta acción.', 'mk20-custom-certificates' ) );
+    }
+
+    $course_id = isset( $_GET['course_id'] ) ? absint( wp_unslash( $_GET['course_id'] ) ) : 0;
+    $user_id   = isset( $_GET['user_id'] ) ? absint( wp_unslash( $_GET['user_id'] ) ) : 0;
+
+    if ( ! $course_id || ! $user_id ) {
+        wp_die( esc_html__( 'Datos del certificado no válidos.', 'mk20-custom-certificates' ) );
+    }
+
+    $nonce = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
+    if ( ! wp_verify_nonce( $nonce, 'mk20_regenerate_cert_' . $course_id . '_' . $user_id ) ) {
+        wp_die( esc_html__( 'Nonce inválido.', 'mk20-custom-certificates' ) );
+    }
+
+    $notice_key = 'mk20_cert_regen_notice_' . get_current_user_id();
+    $result     = mk20_regenerate_certificate( $user_id, $course_id );
+
+    if ( is_wp_error( $result ) ) {
+        set_transient( $notice_key, $result->get_error_message(), 30 );
+    } else {
+        set_transient(
+            $notice_key,
+            __( 'Certificado regenerado correctamente con los datos actuales del alumno.', 'mk20-custom-certificates' ),
+            30
+        );
+    }
+
+    $redirect = wp_get_referer() ? wp_get_referer() : admin_url( 'admin.php?page=mk20-certificates' );
+    wp_safe_redirect( $redirect );
+    exit;
+}
 
 function mk20_handle_delete_cert() {
     if ( ! current_user_can( 'manage_options' ) ) {
