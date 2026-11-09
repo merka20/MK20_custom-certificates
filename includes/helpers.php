@@ -191,11 +191,21 @@ function mk20_regenerate_certificate( $user_id, $course_id ) {
 
     if ( $integrity_hash ) {
         update_user_meta( $user_id, '_mk20_cert_hash_' . $course_id, $integrity_hash );
-        update_user_meta( $user_id, '_mk20_cert_ts_' . $course_id, $engine->get_last_timestamp() );
+
+        // Conservar tambien el sello temporal original de emision que muestra
+        // la pagina publica de verificacion.
+        update_user_meta(
+            $user_id,
+            '_mk20_cert_ts_' . $course_id,
+            $timestamp > 0 && '' !== $stored_date ? get_gmt_from_date( $stored_date, 'Y-m-d\TH:i:s\Z' ) : $engine->get_last_timestamp()
+        );
+
         update_user_meta( $user_id, '_mk20_cert_verify_' . $course_id, $verify_hash );
 
-        mk20_remove_certificate_index( $user_id, $course_id );
-        mk20_index_certificate( $user_id, $course_id, $verify_hash );
+        // Conservar la fecha de emision original en el indice publico.
+        $issued_at = $timestamp > 0 && '' !== $stored_date ? $stored_date : current_time( 'mysql' );
+
+        mk20_index_certificate( $user_id, $course_id, $verify_hash, $issued_at );
     }
 
     $upload_dir = wp_upload_dir();
@@ -1221,24 +1231,52 @@ function mk20_ensure_cert_index_table() {
 /**
  * Inserta o actualiza el indice de un certificado nativo.
  *
+ * Mantiene la fila existente (id y fecha de emision) cuando el certificado ya
+ * estaba indexado, para que una regeneracion no altere los datos publicos.
+ *
  * @param int    $user_id     ID del usuario.
  * @param int    $course_id   ID del curso.
  * @param string $verify_hash Hash SHA-256 de verificacion.
+ * @param string $issued_at   Fecha de emision en formato MySQL. Vacio = ahora.
  */
-function mk20_index_certificate( $user_id, $course_id, $verify_hash ) {
+function mk20_index_certificate( $user_id, $course_id, $verify_hash, $issued_at = '' ) {
     if ( empty( $verify_hash ) ) {
         return;
     }
 
     global $wpdb;
 
-    $wpdb->replace( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Escritura UPSERT sobre tabla propia; no aplica cache de lectura.
-        mk20_get_cert_index_table(),
+    $table     = mk20_get_cert_index_table();
+    $user_id   = absint( $user_id );
+    $course_id = absint( $course_id );
+    $code_hash = strtolower( sanitize_text_field( $verify_hash ) );
+    $issued_at = '' !== (string) $issued_at ? (string) $issued_at : current_time( 'mysql' );
+
+    $existing_id = (int) $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Tabla propia construida desde $wpdb->prefix y valores preparados.
+        $wpdb->prepare( "SELECT id FROM {$table} WHERE user_id = %d AND course_id = %d LIMIT 1", $user_id, $course_id )
+    );
+
+    if ( $existing_id ) {
+        $wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Escritura sobre tabla propia; no aplica cache de lectura.
+            $table,
+            array(
+                'code_hash' => $code_hash,
+                'issued_at' => $issued_at,
+            ),
+            array( 'id' => $existing_id ),
+            array( '%s', '%s' ),
+            array( '%d' )
+        );
+        return;
+    }
+
+    $wpdb->insert( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Escritura sobre tabla propia; no aplica cache de lectura.
+        $table,
         array(
-            'user_id'   => absint( $user_id ),
-            'course_id' => absint( $course_id ),
-            'code_hash' => strtolower( sanitize_text_field( $verify_hash ) ),
-            'issued_at' => current_time( 'mysql' ),
+            'user_id'   => $user_id,
+            'course_id' => $course_id,
+            'code_hash' => $code_hash,
+            'issued_at' => $issued_at,
         ),
         array( '%d', '%d', '%s', '%s' )
     );
