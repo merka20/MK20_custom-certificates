@@ -3,7 +3,7 @@ Contributors: merka20
 Tags: certificates, learndash, buddypress, pdf, fpdf
 Requires at least: 5.0
 Tested up to: 7.1
-Stable tag: 1.4.10.1
+Stable tag: 1.4.10.2
 Requires PHP: 7.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -24,6 +24,10 @@ Certificates can also be uploaded automatically to an external API via POST mult
 3. Go to Settings → MK20 Certificates to configure
 
 == Changelog ==
+
+= 1.4.10.2 =
+* Admin certificate list: new record counter above the table (Mostrando X-Y de Z certificados) that reflects the active search filter
+* Empty search results now show a specific message with the searched term
 
 = 1.4.10.1 =
 * New "Regenerar" button for native certificates in the admin list: rebuilds the PDF with the current student/profile data, keeps the original issue date and refreshes the verification hash, index and media attachment

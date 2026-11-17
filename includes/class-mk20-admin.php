@@ -1001,6 +1001,10 @@ class MK20_Admin {
         $total   = count( $rows );
         $results = array_slice( $rows, $offset, $per_page );
 
+        // Rango visible para el contador "X–Y de Z".
+        $shown_from = $total > 0 ? $offset + 1 : 0;
+        $shown_to   = $total > 0 ? min( $offset + count( $results ), $total ) : 0;
+
         $deleted_notice = get_transient( 'mk20_cert_deleted_notice' );
         if ( $deleted_notice ) {
             delete_transient( 'mk20_cert_deleted_notice' );
@@ -1045,7 +1049,19 @@ class MK20_Admin {
             </div>
 
             <?php if ( empty( $results ) ) : ?>
-                <div class="notice notice-info"><p><?php esc_html_e( 'No hay certificados generados aún.', 'mk20-custom-certificates' ); ?></p></div>
+                <?php if ( '' !== $filter_name ) : ?>
+                    <div class="notice notice-info"><p>
+                        <?php
+                        printf(
+                            /* translators: %s: search term used to filter the list. */
+                            esc_html__( 'No hay certificados que coincidan con «%s».', 'mk20-custom-certificates' ),
+                            esc_html( $filter_name )
+                        );
+                        ?>
+                    </p></div>
+                <?php else : ?>
+                    <div class="notice notice-info"><p><?php esc_html_e( 'No hay certificados generados aún.', 'mk20-custom-certificates' ); ?></p></div>
+                <?php endif; ?>
                 <?php return; ?>
             <?php endif; ?>
 
@@ -1072,6 +1088,32 @@ class MK20_Admin {
                     <input type="hidden" name="ext_certs" id="mk20_bulk_ext_certs" value="" />
                     <button type="submit" class="button button-small" style="background:#ef4444;color:#fff;border:none;" id="mk20_bulk_delete_btn" disabled><?php esc_html_e( 'Eliminar seleccionados', 'mk20-custom-certificates' ); ?></button>
                 </form>
+            </div>
+
+            <div class="mk20-cert-counter" style="margin: 6px 0 10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; color:#50575e;">
+                <span class="mk20-cert-counter-range" style="font-weight:600; color:#1d2327;">
+                    <?php
+                    printf(
+                        /* translators: 1: first record shown on this page, 2: last record shown on this page, 3: total records matching the current filter. */
+                        esc_html__( 'Mostrando %1$d–%2$d de %3$d certificados', 'mk20-custom-certificates' ),
+                        absint( $shown_from ),
+                        absint( $shown_to ),
+                        absint( $total )
+                    );
+                    ?>
+                </span>
+                <?php if ( '' !== $filter_name ) : ?>
+                    <span class="mk20-cert-counter-filter" style="color:#2271b1;">
+                        <?php
+                        printf(
+                            /* translators: 1: search term used to filter the list, 2: number of certificates found for that filter. */
+                            esc_html__( 'Filtro «%1$s»: %2$d certificados', 'mk20-custom-certificates' ),
+                            esc_html( $filter_name ),
+                            absint( $total )
+                        );
+                        ?>
+                    </span>
+                <?php endif; ?>
             </div>
 
             <table class="wp-list-table widefat fixed striped">
