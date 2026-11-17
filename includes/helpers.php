@@ -93,6 +93,37 @@ function mk20_clean_course_title( $title ) {
     return html_entity_decode( $title, ENT_QUOTES, 'UTF-8' );
 }
 
+/**
+ * Devuelve el titulo del curso de una fila de certificado (nativo o externo).
+ *
+ * Solo lee datos del usuario indicado, por lo que nunca devuelve cursos de
+ * otros usuarios.
+ *
+ * @param int    $user_id  ID del usuario.
+ * @param string $meta_key Clave de user meta del certificado.
+ * @return string Titulo limpio del curso o cadena vacia.
+ */
+function mk20_get_certificate_row_course_title( $user_id, $meta_key ) {
+    $user_id  = absint( $user_id );
+    $meta_key = (string) $meta_key;
+
+    if ( ! $user_id || '' === $meta_key ) {
+        return '';
+    }
+
+    if ( 0 === strpos( $meta_key, '_mk20_ext_cert_path_' ) ) {
+        $hash = str_replace( '_mk20_ext_cert_path_', '', $meta_key );
+        return (string) get_user_meta( $user_id, '_mk20_ext_course_title_' . $hash, true );
+    }
+
+    if ( 0 === strpos( $meta_key, '_mk20_cert_path_' ) ) {
+        $course_id = intval( str_replace( '_mk20_cert_path_', '', $meta_key ) );
+        return $course_id ? mk20_clean_course_title( get_the_title( $course_id ) ) : '';
+    }
+
+    return '';
+}
+
 function mk20_get_course_meta( $course_id, $meta_key, $fallback = '' ) {
     if ( empty( $course_id ) ) {
         return $fallback;

@@ -25,6 +25,11 @@ Certificates can also be uploaded automatically to an external API via POST mult
 
 == Changelog ==
 
+= 1.4.10.3 =
+* User profile certificates tab: new course search input that looks only among that user's own certificates (accent and case insensitive)
+* Certificate list in the profile now shows a record counter (Mostrando X-Y de Z certificados)
+* Fix: the course search input no longer overlaps the theme search icon (plain text input without the theme magnifier)
+
 = 1.4.10.2 =
 * Admin certificate list: new record counter above the table (Mostrando X-Y de Z certificados) that reflects the active search filter
 * Empty search results now show a specific message with the searched term
