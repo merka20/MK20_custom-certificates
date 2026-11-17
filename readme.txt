@@ -3,7 +3,7 @@ Contributors: merka20
 Tags: certificates, learndash, buddypress, pdf, fpdf
 Requires at least: 5.0
 Tested up to: 7.1
-Stable tag: 1.4.10.4
+Stable tag: 1.4.10.3
 Requires PHP: 7.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -25,12 +25,10 @@ Certificates can also be uploaded automatically to an external API via POST mult
 
 == Changelog ==
 
-= 1.4.10.4 =
-* Fix: the course search input on the profile certificates tab no longer overlaps the theme search icon (uses a plain text input without the theme magnifier)
-
 = 1.4.10.3 =
-* User profile certificates tab: new course search input (searchs only among that user's own certificates, accent and case insensitive)
+* User profile certificates tab: new course search input that looks only among that user's own certificates (accent and case insensitive)
 * Certificate list in the profile now shows a record counter (Mostrando X-Y de Z certificados)
+* Fix: the course search input no longer overlaps the theme search icon (plain text input without the theme magnifier)
 
 = 1.4.10.2 =
 * Admin certificate list: new record counter above the table (Mostrando X-Y de Z certificados) that reflects the active search filter
