@@ -3,7 +3,7 @@
  * Plugin Name: MK20 Custom Certificates
  * Plugin URI:  https://github.com/merka20/MK20_custom-certificates
  * Description: Genera certificados PDF de dos caras (anverso y reverso) personalizados mediante FPDF al completar cursos de LearnDash.
- * Version:     1.4.10.2
+ * Version:     1.4.10.3
  * Author:      Merka2.0
  * Author URI:  https://merka20.com
  * License:     GPL-2.0-or-later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'MK20_CERT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MK20_CERT_URL', plugin_dir_url( __FILE__ ) );
-define( 'MK20_CERT_VERSION', '1.4.10.2' );
+define( 'MK20_CERT_VERSION', '1.4.10.3' );
 define( 'MK20_CERT_DB_VERSION', '1.0.0' );
 
 if ( ! defined( 'MK20_EXT_API_URL' ) ) {
@@ -672,6 +672,47 @@ function mk20_certificates_screen_content() {
         return;
     }
 
+    // Buscador por curso: filtra SOLO entre los certificados de este usuario.
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Filtro de solo lectura sobre los certificados del propio perfil.
+    $course_search = isset( $_GET['mk20_course_search'] ) ? sanitize_text_field( wp_unslash( $_GET['mk20_course_search'] ) ) : '';
+
+    $base_profile_url = remove_query_arg( array( 'mk20_course_search', 'cert_page' ) );
+
+    echo '<form method="get" action="' . esc_url( $base_profile_url ) . '" class="mk20-cert-course-search" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 14px;">';
+    echo '<input type="search" name="mk20_course_search" value="' . esc_attr( $course_search ) . '" placeholder="' . esc_attr__( 'Buscar por curso…', 'mk20-custom-certificates' ) . '" style="flex:1 1 220px; max-width:320px; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px;" />';
+    echo '<button type="submit" class="button bp-secondary-button" style="padding:8px 16px; border-radius:6px; cursor:pointer;">' . esc_html__( 'Buscar', 'mk20-custom-certificates' ) . '</button>';
+    if ( '' !== $course_search ) {
+        echo '<a href="' . esc_url( $base_profile_url ) . '" style="text-decoration:none;">' . esc_html__( 'Quitar filtro', 'mk20-custom-certificates' ) . '</a>';
+    }
+    echo '</form>';
+
+    if ( '' !== $course_search ) {
+        $needle   = mb_strtolower( remove_accents( $course_search ) );
+        $filtered = array();
+
+        foreach ( $results as $row ) {
+            $row_title = mk20_get_certificate_row_course_title( $displayed_user_id, $row->mk20_key );
+            $row_title = mb_strtolower( remove_accents( $row_title ) );
+
+            if ( '' !== $row_title && false !== strpos( $row_title, $needle ) ) {
+                $filtered[] = $row;
+            }
+        }
+
+        $results = $filtered;
+    }
+
+    if ( empty( $results ) ) {
+        echo '<div class="bp-feedback info"><span class="bp-icon" aria-hidden="true"></span><p>';
+        printf(
+            /* translators: %s: course search term used to filter the list. */
+            esc_html__( 'No hay certificados que coincidan con «%s».', 'mk20-custom-certificates' ),
+            esc_html( $course_search )
+        );
+        echo '</p></div>';
+        return;
+    }
+
     $per_page = absint( apply_filters( 'mk20_certificates_per_page', 20 ) );
     $per_page = $per_page > 0 ? $per_page : 20;
     $total    = count( $results );
@@ -682,6 +723,19 @@ function mk20_certificates_screen_content() {
     $current = min( $current, max( 1, $pages ) );
 
     $page_results = array_slice( $results, ( $current - 1 ) * $per_page, $per_page );
+
+    $shown_from = ( $current - 1 ) * $per_page + 1;
+    $shown_to   = min( $shown_from + count( $page_results ) - 1, $total );
+
+    echo '<div class="mk20-certificates-count" style="margin:0 0 10px; color:#64748b; font-size:14px;">';
+    printf(
+        /* translators: 1: first certificate shown on this page, 2: last certificate shown, 3: total certificates for the current filter. */
+        esc_html__( 'Mostrando %1$d–%2$d de %3$d certificados', 'mk20-custom-certificates' ),
+        absint( $shown_from ),
+        absint( $shown_to ),
+        absint( $total )
+    );
+    echo '</div>';
 
     $native_download_url = admin_url( 'admin-post.php?action=mk20_download_cert' );
     $ext_download_url    = admin_url( 'admin-post.php?action=mk20_download_ext_cert' );

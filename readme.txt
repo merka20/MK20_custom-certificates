@@ -3,7 +3,7 @@ Contributors: merka20
 Tags: certificates, learndash, buddypress, pdf, fpdf
 Requires at least: 5.0
 Tested up to: 7.1
-Stable tag: 1.4.10.2
+Stable tag: 1.4.10.3
 Requires PHP: 7.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -24,6 +24,10 @@ Certificates can also be uploaded automatically to an external API via POST mult
 3. Go to Settings → MK20 Certificates to configure
 
 == Changelog ==
+
+= 1.4.10.3 =
+* User profile certificates tab: new course search input (searchs only among that user's own certificates, accent and case insensitive)
+* Certificate list in the profile now shows a record counter (Mostrando X-Y de Z certificados)
 
 = 1.4.10.2 =
 * Admin certificate list: new record counter above the table (Mostrando X-Y de Z certificados) that reflects the active search filter
