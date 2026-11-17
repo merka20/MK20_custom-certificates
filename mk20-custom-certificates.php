@@ -3,7 +3,7 @@
  * Plugin Name: MK20 Custom Certificates
  * Plugin URI:  https://github.com/merka20/MK20_custom-certificates
  * Description: Genera certificados PDF de dos caras (anverso y reverso) personalizados mediante FPDF al completar cursos de LearnDash.
- * Version:     1.4.10.3
+ * Version:     1.4.10.4
  * Author:      Merka2.0
  * Author URI:  https://merka20.com
  * License:     GPL-2.0-or-later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'MK20_CERT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MK20_CERT_URL', plugin_dir_url( __FILE__ ) );
-define( 'MK20_CERT_VERSION', '1.4.10.3' );
+define( 'MK20_CERT_VERSION', '1.4.10.4' );
 define( 'MK20_CERT_DB_VERSION', '1.0.0' );
 
 if ( ! defined( 'MK20_EXT_API_URL' ) ) {
@@ -679,7 +679,7 @@ function mk20_certificates_screen_content() {
     $base_profile_url = remove_query_arg( array( 'mk20_course_search', 'cert_page' ) );
 
     echo '<form method="get" action="' . esc_url( $base_profile_url ) . '" class="mk20-cert-course-search" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 14px;">';
-    echo '<input type="search" name="mk20_course_search" value="' . esc_attr( $course_search ) . '" placeholder="' . esc_attr__( 'Buscar por curso…', 'mk20-custom-certificates' ) . '" style="flex:1 1 220px; max-width:320px; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px;" />';
+    echo '<input type="text" name="mk20_course_search" value="' . esc_attr( $course_search ) . '" placeholder="' . esc_attr__( 'Buscar por curso…', 'mk20-custom-certificates' ) . '" style="flex:1 1 220px; max-width:320px; box-sizing:border-box; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; background-image:none; line-height:1.4;" />';
     echo '<button type="submit" class="button bp-secondary-button" style="padding:8px 16px; border-radius:6px; cursor:pointer;">' . esc_html__( 'Buscar', 'mk20-custom-certificates' ) . '</button>';
     if ( '' !== $course_search ) {
         echo '<a href="' . esc_url( $base_profile_url ) . '" style="text-decoration:none;">' . esc_html__( 'Quitar filtro', 'mk20-custom-certificates' ) . '</a>';
